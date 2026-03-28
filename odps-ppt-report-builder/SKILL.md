@@ -1,197 +1,154 @@
 ---
 name: odps-ppt-report-builder
-description: Use this skill when the user wants to query ODPS or MaxCompute with fixed SQL, inspect source table schema, and generate a fixed-format PPT report or business review deck. This skill is for repeatable ODPS-to-PPT workflows that combine odpscmd, reusable SQL templates, and deterministic slide rendering for QoderWork, Qoder IDE, or Qoder CLI.
+description: "用固定 SQL 从 ODPS 取数、整理表结构，并按固定模板生成 PPT 的 skill。适合周报、复盘和经营分析这类重复报告。"
 ---
 
-# ODPS PPT Report Builder
+# ODPS 转 PPT
 
-Use this skill for recurring reporting workflows such as weekly reviews, management updates, campaign summaries, business retrospectives, or standard operating reports that should be created from fixed ODPS queries and a fixed slide format.
+这个 skill 就做一件事：按固定 SQL 从 ODPS 取数，然后按固定版式出 PPT。
 
-## Preconditions
+默认先照顾不懂技术的同事，所以优先走少安装、少折腾的路径。机器上如果刚好有 Python，再走脚本模式把流程跑得更稳。
 
-- The only hard requirement is `odpscmd` on the current machine.
-- Do not assume Python, git, Node.js, or any other developer tooling exists.
-- If Python is available, the bundled scripts can standardize the workflow, but they are optional.
-- Prefer a team-owned private brief derived from `assets/company_private_brief.template.md`.
-- Treat Qoder IDE and Qoder Work as separate installation targets. Do not assume a skill folder in one product is automatically visible in the other.
+## 先记住这几条
 
-## Install Strategy
+- 硬要求只有 `odpscmd`
+- 不要默认用户有 Python、git、Node.js
+- Qoder Work 和 Qoder IDE 分开看，不要默认一个装好另一个也能用
+- 依赖不要装进 Qoder Work 程序目录
+- 真正敏感的 SQL、表名、字段解释、PPT 规则，都放到 `assets/company_private_brief.md`
 
-Use three separate layers. Do not mix them.
+## 装在哪里
 
-1. Skill files
+1. skill 本体
 
-- Install the skill folder into `~/.qoderwork/skills/odps-ppt-report-builder/`
-- Do not install supporting packages into the Qoder Work application directory
-- Qoder IDE and Qoder Work should each load their own skill directories
+- 放到 `~/.qoderwork/skills/odps-ppt-report-builder/`
 
-2. Shared user runtime
+2. 如果需要 Python
 
-- If Python scripts are needed, install Python packages into a user-scoped shared runtime:
-  - macOS: `~/.qoderwork-runtime/python/odps-ppt-report-builder/`
-  - Windows: `%USERPROFILE%\.qoderwork-runtime\python\odps-ppt-report-builder\`
-- This runtime is reusable across conversations and can also be reused by future Python-based skills
-- Prefer this over `pip install --user` and prefer it over a venv inside the Qoder Work app folder
+- macOS：`~/.qoderwork-runtime/python/odps-ppt-report-builder/`
+- Windows：`%USERPROFILE%\.qoderwork-runtime\python\odps-ppt-report-builder\`
 
-3. Machine-level tools
+3. 机器级工具
 
-- Tools like `Python`, `odpscmd`, `Node.js`, `git`, `PowerPoint`, or `WPS` should be installed at the machine or user level, not inside the skill folder
-- For future skills that need Node.js, install Node.js once for the whole machine or user profile
-- Never install machine-level tools into the Qoder Work app bundle
+- `Python`、`odpscmd`、`Node.js`、`git`、`PowerPoint`、`WPS` 都装到用户或系统环境
+- 不要装进 skill 目录，也不要装进 Qoder Work 程序目录
 
-## Setup Decision Tree
+## 什么时候用这个 skill
 
-Follow this order exactly.
+- 固定 SQL 跑周报、日报、月报
+- 先看表结构，再写汇报
+- 只换日期或业务参数，重新出同一套报告
+- 经营分析、活动复盘、管理汇报这类固定模板 PPT
 
-1. Confirm the product.
+## 默认流程：先走少安装模式
 
-- If the user is in Qoder Work, use `~/.qoderwork/skills/`
-- If the user is in Qoder IDE, do not assume the same folder applies
+1. 先确认当前产品
 
-2. Confirm the operating system.
+- 如果是 Qoder Work，用 `~/.qoderwork/skills/`
+- 如果是 Qoder IDE，不要默认路径一样
 
-- macOS:
-  - use `python3`
-  - shared runtime under `~/.qoderwork-runtime/`
-- Windows:
-  - prefer `py -3`
-  - shared runtime under `%USERPROFILE%\.qoderwork-runtime\`
+2. 再确认系统
 
-3. Confirm which capabilities are already present.
+- macOS：优先 `python3`
+- Windows：优先 `py -3`
 
-- Check whether `odpscmd` exists
-- Check whether Python exists
-- Check whether the current machine can produce `.pptx`
+3. 看机器上已经有什么
 
-4. Choose the execution path.
+- `odpscmd` 在不在
+- Python 在不在
+- 能不能直接生成 `.pptx`
 
-- If only `odpscmd` is available, use zero-setup mode and generate a slide manuscript if needed
-- If `odpscmd` and Python are available, bootstrap the shared runtime and use the scripted path
-- If `odpscmd` is missing, read the private brief for company-approved installation steps before proceeding
+4. 先读私有说明
 
-## When This Skill Triggers
+- 如果 `assets/company_private_brief.md` 已经有了，就以它为准
+- 如果没有，就用 `assets/company_private_brief.template.md` 做底稿，让维护人回公司机器补齐
+- SQL、表结构规则、保密要求、PPT 写法都应该写在这个文件里
 
-Trigger this skill when the user asks for any of the following:
+5. 取数时只用私有说明里写明的命令
 
-- Query one or more fixed ODPS tables and turn the result into a PPT
-- Generate a recurring weekly or daily business deck from MaxCompute
-- Inspect table schema before writing a management report
-- Re-run a standard report with only date or business variables changed
-- Produce a slide deck that must follow a fixed template, structure, tone, or narrative format
-
-## Default Workflow: Zero-Setup Qoder Work Mode
-
-This is the default mode for non-technical users. Prefer it unless the current machine clearly has Python available and the user wants the scripted path.
-
-1. Confirm which private brief to use.
-
-- If `assets/company_private_brief.md` exists, use it.
-- Otherwise use `assets/company_private_brief.template.md` as the source of truth and ask the user to fill the private sections on the company machine.
-- The private brief is where table names, SQL, schema rules, confidentiality constraints, and PPT writing requirements belong.
-
-2. Avoid asking the user to install tooling.
-
-- Use only:
-  - `odpscmd`
-  - built-in shell execution
-  - Qoder Work reasoning and file editing
-- If the machine has no Python, continue without the bundled scripts.
-
-3. Read the private brief before touching ODPS.
-
-- Extract these items from the private brief:
-  - exact schema collection command or SQL
-  - exact business queries
-  - required variables such as date range, campaign name, owner, or business line
-  - slide-by-slide PPT rules
-  - words or conclusions that are forbidden
-
-4. Run ODPS directly with the exact commands from the private brief.
-
-- Save raw outputs into a task folder, for example:
+- 不要自己猜 SQL
+- 原始输出单独存到一个任务文件夹里，例如：
   - `raw_schema.txt`
   - `raw_query_overview.txt`
   - `raw_query_detail.txt`
-- Also create normalized reasoning files:
-  - `report_context.md`
-  - `slide_plan.generated.json`
 
-5. Draft the report in the private brief's fixed format.
+6. 再整理成中间文件
 
-- Keep the slide order exactly as defined
-- Keep bullet counts exactly as defined
-- Make every claim traceable to the ODPS output
-- If a query returns no rows, state that explicitly on the slide instead of guessing
+- `report_context.md`
+- `slide_plan.generated.json`
 
-6. Produce the final deliverable.
+7. 出最终结果
 
-- Preferred:
-  - a native `.pptx` if the current environment supports it
-- Acceptable fallback:
-  - a complete slide manuscript with slide titles, bullets, table content, speaker notes, and appendix content ready to paste into PowerPoint or WPS
+- 能出 `.pptx` 就直接出
+- 如果当前机器不方便出 `.pptx`，就给完整讲稿版本：每页标题、要点、表格内容、备注都写清楚，后面可以直接贴到 PowerPoint 或 WPS
 
-7. Return the result clearly.
+8. 回结果时说清楚
 
-- Provide the file path
-- Summarize the key findings in 3 to 5 lines
-- Call out missing data, failed schema fetches, or blocked rendering steps
+- 文件路径
+- 3 到 5 条重点结论
+- 哪些数据没拿到，或者哪一步卡住了
 
-## Optional Workflow: Scripted Mode
+## 如果机器上有 Python，再走脚本模式
 
-Use this only when Python is available and the user wants a more repeatable pipeline.
+只在两种情况下走这条路：
 
-1. Start from `assets/report_config.template.yaml`
-2. Bootstrap the shared runtime
+- 机器上已经有 Python
+- 用户明确希望流程更稳、更可复用
 
-- macOS:
-  ```bash
-  python3 scripts/bootstrap_env.py
-  ```
-- Windows:
-  ```powershell
-  py -3 scripts\bootstrap_env.py
-  ```
+1. 从 `assets/report_config.template.yaml` 开始
+2. 初始化共享运行时
 
-3. Build the report bundle
+macOS:
 
-- macOS:
-  ```bash
-  ~/.qoderwork-runtime/python/odps-ppt-report-builder/venv/bin/python scripts/build_report_bundle.py --config <config-path>
-  ```
-- Windows:
-  ```powershell
-  %USERPROFILE%\.qoderwork-runtime\python\odps-ppt-report-builder\venv\Scripts\python.exe scripts\build_report_bundle.py --config <config-path>
-  ```
+```bash
+python3 scripts/bootstrap_env.py
+```
 
-4. Generate a first-pass slide plan
+Windows:
 
-- Preferred:
-  - let Qoder Work read `report_context.md` and fill the plan
-- Fallback for weaker models:
-  - run `scripts/fill_slide_plan.py` to create a deterministic starter plan
+```powershell
+py -3 scripts\bootstrap_env.py
+```
 
-5. Render the output
+3. 生成报告中间包
 
-- Run `scripts/render_ppt.py` for `.pptx`
-- Run `scripts/render_preview_html.py` if the user wants a browser preview
-- Run `scripts/render_preview_png.py` if the user wants a shareable image preview without opening PowerPoint
-- If native PPT rendering is blocked, return the generated plan and slide manuscript
+macOS:
 
-## Guardrails
+```bash
+~/.qoderwork-runtime/python/odps-ppt-report-builder/venv/bin/python scripts/build_report_bundle.py --config <config-path>
+```
 
-- Keep the deck factual. Do not infer business causes unless the data supports it.
-- Prefer the schema query over guessing field meanings.
-- If `Information_Schema.columns` is unavailable in the target environment, use a custom `schema_sql` in the config instead of parsing `DESC` output.
-- In zero-setup mode, do not force non-technical users into a Python-based flow.
-- Put confidential SQL, table names, field definitions, business rules, and writing requirements into the private brief instead of hardcoding them into the public skill body.
-- Install reusable dependencies into the shared user runtime, not into the Qoder Work app directory and not into system site-packages unless the tool is intentionally machine-wide.
-- Keep reusable logic in the config and scripts, not in ad hoc one-off prompts.
-- Treat the config file as the source of truth for SQL, slide order, and formatting rules.
+Windows:
 
-## References
+```powershell
+%USERPROFILE%\.qoderwork-runtime\python\odps-ppt-report-builder\venv\Scripts\python.exe scripts\build_report_bundle.py --config <config-path>
+```
 
-- Read `references/workflow.md` for config conventions and ODPS caveats.
-- Read `references/slide_plan_format.md` before editing `slide_plan.generated.json`.
-- Read `references/setup_strategy_zh.md` for detailed setup guidance and cross-platform deployment decisions.
-- Read `assets/company_private_brief.template.md` when setting up a new confidential reporting workflow.
-- Use `assets/qoderwork_first_run_prompt.template.md` as the starter prompt for non-technical Qoder Work users.
+4. 生成首版 slide plan
+
+- 优先让 Qoder Work 读 `report_context.md` 后补 `slide_plan.generated.json`
+- 如果模型偏弱，就先跑 `scripts/fill_slide_plan.py`，再人工补
+
+5. 渲染结果
+
+- `scripts/render_ppt.py`：生成 `.pptx`
+- `scripts/render_preview_html.py`：生成 HTML 预览
+- `scripts/render_preview_png.py`：生成 PNG 预览
+- 如果 `.pptx` 渲染失败，至少把 plan 和讲稿交付出来
+
+## 写的时候别踩这些坑
+
+- 结论只写数据支持的内容，不要自己脑补业务原因
+- 能查 schema 就先查 schema，不要猜字段含义
+- 在少安装模式下，不要逼非技术同事折腾 Python
+- 公共 skill 里不要硬编码敏感 SQL、表名、字段口径和写作要求
+- 可复用的东西放到 `config` 和脚本里，不要散落在临时 prompt 里
+- SQL、大纲、格式规则，以配置和私有说明为准
+
+## 参考文件
+
+- `references/workflow.md`
+- `references/slide_plan_format.md`
+- `references/setup_strategy_zh.md`
+- `assets/company_private_brief.template.md`
+- `assets/qoderwork_first_run_prompt.template.md`
