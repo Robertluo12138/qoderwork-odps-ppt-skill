@@ -15,6 +15,8 @@ description: "用固定 SQL 从 ODPS 取数、整理表结构，并按固定模�
 - 不要默认用户有 Python、git、Node.js
 - Qoder Work 和 Qoder IDE 分开看，不要默认一个装好另一个也能用
 - 依赖不要装进 Qoder Work 程序目录
+- 出 PPT 时优先原生文本框、表格、图表和形状，不要整页截图
+- 除非明确需要插图，否则不要把正文重点做成位图素材
 - 真正敏感的 SQL、表名、字段解释、PPT 规则，都放到 `assets/company_private_brief.md`
 
 ## 装在哪里

@@ -55,17 +55,17 @@ def compare_first_last(rows: list[dict[str, Any]], column: str) -> str | None:
         return None
     delta = last - first
     pct = delta / first * 100
-    direction = "increased" if delta >= 0 else "decreased"
-    return f"{column} {direction} from {rows[0].get(column)} to {rows[-1].get(column)} ({pct:.1f}%)."
+    direction = "上升" if delta >= 0 else "下降"
+    return f"{column} 从 {rows[0].get(column)} 到 {rows[-1].get(column)}，整体{direction} {abs(pct):.1f}%。"
 
 
 def build_table_takeaways(query_name: str, query_data: dict[str, Any]) -> list[str]:
     rows = query_data.get("rows", [])
     columns = query_data.get("columns", [])
     if not rows:
-        return [f"{query_name} returned no rows.", "Validate filters and source partitions before writing conclusions."]
+        return [f"{query_name} 这组查询没有返回数据。", "先检查筛选条件和分区，再决定这一页怎么写。"]
 
-    bullets = [f"{query_name} returned {len(rows)} rows; first row is {rows[0]}."]
+    bullets = [f"{query_name} 一共返回 {len(rows)} 行，首行结果是 {rows[0]}。"]
     numeric_columns = pick_numeric_columns(rows, columns)
     if numeric_columns:
         trend_line = compare_first_last(rows, numeric_columns[0])
@@ -74,10 +74,42 @@ def build_table_takeaways(query_name: str, query_data: dict[str, Any]) -> list[s
         else:
             top_row = max(rows, key=lambda row: to_float(row.get(numeric_columns[0])) or float("-inf"))
             bullets.append(
-                f"Highest {numeric_columns[0]} appears in row {top_row}."
+                f"{numeric_columns[0]} 最大的一行是 {top_row}。"
             )
     else:
-        bullets.append("No numeric columns were detected for trend analysis.")
+        bullets.append("这组结果里没有明显可用于趋势判断的数值列。")
+    return bullets[:2]
+
+
+def build_chart_takeaways(slide: dict[str, Any], query_data: dict[str, Any]) -> list[str]:
+    rows = query_data.get("rows", [])
+    columns = query_data.get("columns", [])
+    category_column = slide.get("category_column") or (columns[0] if columns else "")
+    value_columns = slide.get("value_columns") or [
+        column
+        for column in columns
+        if column != category_column
+        and any(to_float(row.get(column)) is not None for row in rows)
+    ][:3]
+
+    if not rows:
+        return ["这张图现在没有数据。", "先检查筛选条件和分区，再决定这一页怎么写。"]
+
+    if not value_columns:
+        return ["这张图还没有找到可用的数值列。", "先明确 value_columns，再生成图表。"]
+
+    bullets = [f"这张图用 {category_column} 做横轴，展示 {', '.join(value_columns)}。"]
+
+    first_metric = value_columns[0]
+    numeric_rows = [row for row in rows if to_float(row.get(first_metric)) is not None]
+    if numeric_rows:
+        top_row = max(numeric_rows, key=lambda row: to_float(row.get(first_metric)) or float("-inf"))
+        bullets.append(
+            f"{first_metric} 最高的是 {top_row.get(category_column)}，值为 {top_row.get(first_metric)}。"
+        )
+    else:
+        bullets.append("第一组图表序列里没有找到可用的数值。")
+
     return bullets[:2]
 
 
@@ -85,7 +117,7 @@ def build_executive_summary(payload: dict[str, Any]) -> list[str]:
     query_map = payload.get("queries", {})
     populated = [name for name, item in query_map.items() if item.get("rows")]
     bullets: list[str] = []
-    bullets.append(f"{len(populated)} query blocks returned data and are ready for review.")
+    bullets.append(f"这次一共有 {len(populated)} 组查询拿到了数据，可以继续写报告。")
 
     best_signal = None
     best_value = None
@@ -106,11 +138,11 @@ def build_executive_summary(payload: dict[str, Any]) -> list[str]:
 
     if best_signal:
         name, column, row = best_signal
-        bullets.append(f"Strongest visible signal is in {name}: {column} reached {row.get(column)}.")
+        bullets.append(f"当前最明显的信号出现在 {name}：{column} 达到 {row.get(column)}。")
     else:
-        bullets.append("No strong numeric signal was detected automatically; manual review is still required.")
+        bullets.append("自动检查没有识别出特别强的数值信号，还是需要人工再看一遍。")
 
-    bullets.append("Next step: validate the narrative against raw ODPS output before sharing externally.")
+    bullets.append("对外发送前，先拿原始 ODPS 结果再对一遍口径。")
     return bullets[:3]
 
 
@@ -122,16 +154,21 @@ def main() -> None:
     for slide in template.get("slides", []):
         slide_type = slide.get("type")
         if slide_type == "schema":
-            slide["intro_text"] = "The source schema below is the basis for all table interpretation in this deck."
-            slide["speaker_notes"] = "Review sensitive fields before final distribution."
+            slide["intro_text"] = "下面这部分是本次报告依赖的源表结构，后面的解释都要以这里为准。"
+            slide["speaker_notes"] = "正式发出去前，再看一遍有没有敏感字段。"
         elif slide_type == "table":
             query_name = slide.get("query")
             query_data = payload.get("queries", {}).get(query_name, {})
             slide["takeaway_bullets"] = build_table_takeaways(query_name, query_data)
-            slide["speaker_notes"] = "This slide was prefilled by a deterministic helper and should be reviewed by Qoder Work."
+            slide["speaker_notes"] = "这页是脚本先填的首版，后面最好再结合业务语境顺一遍。"
+        elif slide_type == "chart":
+            query_name = slide.get("query")
+            query_data = payload.get("queries", {}).get(query_name, {})
+            slide["takeaway_bullets"] = build_chart_takeaways(slide, query_data)
+            slide["speaker_notes"] = "发出去前确认一下图表类型、横轴字段和数值列是不是都对。"
         elif slide_type == "ai_bullets":
             slide["bullets"] = build_executive_summary(payload)
-            slide["speaker_notes"] = "Replace or refine this summary if stronger business context is available."
+            slide["speaker_notes"] = "如果你对业务更熟，这页建议再手动润一下。"
 
     dump_json(Path(args.output).resolve(), template)
     print(f"generated_plan={Path(args.output).resolve()}")

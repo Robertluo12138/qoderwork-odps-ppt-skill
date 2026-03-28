@@ -76,6 +76,23 @@ def build_slide_plan(config: dict[str, Any], output_dir: Path) -> dict[str, Any]
             )
             continue
 
+        if slide_type == "chart":
+            slides.append(
+                {
+                    "type": "chart",
+                    "title": slide["title"],
+                    "query": slide["query"],
+                    "chart_type": slide.get("chart_type", "line"),
+                    "category_column": slide.get("category_column", ""),
+                    "value_columns": slide.get("value_columns", []),
+                    "max_points": slide.get("max_points", 12),
+                    "takeaway_prompt": slide.get("takeaway_prompt", ""),
+                    "takeaway_bullets": [],
+                    "speaker_notes": "",
+                }
+            )
+            continue
+
         if slide_type == "ai_bullets":
             slides.append(
                 {

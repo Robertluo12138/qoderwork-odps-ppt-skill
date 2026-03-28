@@ -50,6 +50,8 @@
 
 - Table slides should stay close to the raw data and avoid interpretation drift.
 - Narrative slides should be short and decision-oriented.
+- When a chart is needed, prefer a native PowerPoint chart instead of a screenshot.
+- When decoration is needed, prefer editable shapes and text boxes instead of flattening content into one image.
 - If a slide prompt says "exactly 3 bullets", do not output 2 or 4.
 - If a query returns no rows, write a bullet that says the result set is empty and avoid extrapolation.
 

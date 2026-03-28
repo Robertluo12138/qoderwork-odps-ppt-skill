@@ -4,6 +4,8 @@
 
 它主要做一件事：按固定 SQL 从 ODPS 取数，再按固定格式整理成 PPT。
 
+默认思路是尽量用 PowerPoint 原生对象来出内容，后面改字、改表、改图会方便一些。
+
 如果你只是拿来装给同事用，直接看 `odps-ppt-report-builder.zip` 就行。  
 如果你是维护这套 skill 的人，再看 `odps-ppt-report-builder/` 里的文件。
 

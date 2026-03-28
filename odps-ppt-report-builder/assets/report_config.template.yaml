@@ -50,7 +50,15 @@ report:
     accent_color: "F28E2B"
     text_color: "1F1F1F"
     background_color: "FFFFFF"
-    font_family: "Arial"
+    font_family: "Aptos"
+    title_font_size: 24
+    hero_title_font_size: 28
+    subtitle_font_size: 18
+    body_font_size: 16
+    table_header_font_size: 11
+    table_body_font_size: 10
+    footer_font_size: 10
+    chart_palette: ["0F4C81", "F28E2B", "59A14F", "E15759"]
 
 slides:
   - type: "title"
@@ -67,11 +75,29 @@ slides:
     max_rows: 12
     takeaway_prompt: "Write exactly 2 bullets that summarize the strongest signals from overview."
 
+  - type: "chart"
+    title: "GMV Trend"
+    query: "overview"
+    chart_type: "line"
+    category_column: "ds"
+    value_columns: ["gmv"]
+    max_points: 14
+    takeaway_prompt: "Write exactly 2 bullets that summarize the trend shown in the chart."
+
   - type: "table"
     title: "Top Items"
     query: "top_items"
     max_rows: 10
     takeaway_prompt: "Write exactly 2 bullets that summarize product winners and laggards."
+
+  - type: "chart"
+    title: "Top Item GMV"
+    query: "top_items"
+    chart_type: "bar"
+    category_column: "item_name"
+    value_columns: ["gmv"]
+    max_points: 10
+    takeaway_prompt: "Write exactly 2 bullets that summarize what the ranking chart shows."
 
   - type: "ai_bullets"
     title: "Executive Summary"

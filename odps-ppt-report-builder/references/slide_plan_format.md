@@ -47,6 +47,24 @@ Optional authoring fields:
 - `speaker_notes`
 - `max_rows`
 
+## `chart`
+
+Required fields:
+
+- `type`
+- `title`
+- `query`
+
+Optional authoring fields:
+
+- `chart_type`
+- `category_column`
+- `value_columns`
+- `max_points`
+- `takeaway_prompt`
+- `takeaway_bullets`
+- `speaker_notes`
+
 ## `ai_bullets`
 
 Required fields:
@@ -70,3 +88,4 @@ Optional authoring fields:
 - Keep slide order unchanged.
 - Fill only the narrative fields unless the user asks for structural edits.
 - Keep bullets as plain strings.
+- Prefer native PowerPoint objects such as text boxes, tables, charts, and shapes over pasted screenshots.

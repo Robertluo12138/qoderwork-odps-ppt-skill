@@ -29,6 +29,16 @@ def hex_to_rgb(color: str) -> tuple[int, int, int]:
     return tuple(int(clean[index : index + 2], 16) for index in (0, 2, 4))
 
 
+def to_float(value: Any) -> float | None:
+    try:
+        text = str(value).replace(",", "").strip()
+        if not text:
+            return None
+        return float(text)
+    except ValueError:
+        return None
+
+
 def load_font(size: int):
     from PIL import ImageFont
 
@@ -73,6 +83,27 @@ def draw_table(draw, x: int, y: int, width: int, headers: list[str], rows: list[
             right = left + col_width
             draw.rectangle((left, top, right, top + row_height), outline=(220, 227, 238))
             draw.text((left + 8, top + 6), str(row.get(header, ""))[:22], fill=(31, 31, 31), font=small_font)
+
+
+def draw_simple_chart(draw, x: int, y: int, width: int, rows: list[dict[str, Any]], category_column: str, value_column: str, font_body, font_small, theme: dict[str, Any]):
+    chart_rows = rows[:6]
+    values = [to_float(row.get(value_column)) or 0.0 for row in chart_rows]
+    max_value = max(values) if values else 0.0
+    current_y = y
+
+    for row, value in zip(chart_rows, values):
+        label = str(row.get(category_column, ""))[:18]
+        draw.text((x, current_y), label, fill=(45, 53, 66), font=font_small)
+        draw.rounded_rectangle((x + 220, current_y + 6, x + width, current_y + 28), radius=10, fill=(235, 240, 246))
+        if max_value > 0:
+            bar_width = int((width - 220) * value / max_value)
+            draw.rounded_rectangle(
+                (x + 220, current_y + 6, x + 220 + bar_width, current_y + 28),
+                radius=10,
+                fill=hex_to_rgb(theme["primary_color"]),
+            )
+        draw.text((x + width + 14, current_y + 2), str(row.get(value_column, ""))[:12], fill=(45, 53, 66), font=font_small)
+        current_y += 54
 
 
 def render_slide_image(slide: dict[str, Any], payload: dict[str, Any], theme: dict[str, Any]):
@@ -130,6 +161,31 @@ def render_slide_image(slide: dict[str, Any], payload: dict[str, Any], theme: di
         headers = query_data.get("columns", [])
         rows = query_data.get("rows", [])
         draw_table(draw, 70, 320, 1460, headers, rows, font_body, font_small, theme)
+        return image
+
+    if slide_type == "chart":
+        bullet_y = 170
+        for bullet in slide.get("takeaway_bullets", []):
+            for line in wrap(str(bullet), 70):
+                draw.text((100, bullet_y), f"- {line}", fill=(45, 53, 66), font=font_body)
+                bullet_y += 34
+        query = slide.get("query")
+        query_data = payload.get("queries", {}).get(query, {})
+        rows = query_data.get("rows", [])
+        columns = query_data.get("columns", [])
+        category_column = slide.get("category_column") or (columns[0] if columns else "")
+        value_columns = slide.get("value_columns") or [
+            column
+            for column in columns
+            if column != category_column
+            and any(to_float(row.get(column)) is not None for row in rows)
+        ][:3]
+        meta = f"{slide.get('chart_type', 'line')} | {category_column} | {', '.join(value_columns)}"
+        draw.text((70, 300), meta, fill=(92, 102, 116), font=font_small)
+        if rows and category_column and value_columns:
+            draw_simple_chart(draw, 70, 350, 1280, rows, category_column, value_columns[0], font_body, font_small, theme)
+        else:
+            draw.text((70, 380), "Chart preview is not available for this slide.", fill=(92, 102, 116), font=font_body)
         return image
 
     if slide_type == "ai_bullets":

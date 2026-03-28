@@ -9,7 +9,9 @@ from common import deep_render, load_yaml, output_dir_from_config
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Render a PPTX from a report payload and slide plan.")
+    parser = argparse.ArgumentParser(
+        description="Render an editable PPTX from a report payload and slide plan."
+    )
     parser.add_argument("--config", required=True, help="Path to the YAML report config.")
     parser.add_argument("--payload", required=True, help="Path to report_payload.json.")
     parser.add_argument("--plan", required=True, help="Path to slide_plan.generated.json.")
@@ -29,7 +31,17 @@ def hex_to_rgb(color: str) -> tuple[int, int, int]:
     return tuple(int(clean[index : index + 2], 16) for index in (0, 2, 4))
 
 
-def ensure_dependencies():
+def to_float(value: Any) -> float | None:
+    try:
+        text = str(value).replace(",", "").strip()
+        if not text:
+            return None
+        return float(text)
+    except ValueError:
+        return None
+
+
+def ensure_dependencies() -> None:
     try:
         from pptx import Presentation  # noqa: F401
     except ImportError as exc:
@@ -38,7 +50,38 @@ def ensure_dependencies():
         ) from exc
 
 
-def apply_run_style(run, font_name: str, font_size: int, rgb: tuple[int, int, int], bold: bool = False):
+def build_theme(raw_theme: dict[str, Any]) -> dict[str, Any]:
+    chart_palette = raw_theme.get("chart_palette") or [
+        "0F4C81",
+        "F28E2B",
+        "59A14F",
+        "E15759",
+        "76B7B2",
+    ]
+    return {
+        "primary_color": raw_theme.get("primary_color", "0F4C81"),
+        "accent_color": raw_theme.get("accent_color", "F28E2B"),
+        "text_color": raw_theme.get("text_color", "1F1F1F"),
+        "background_color": raw_theme.get("background_color", "FFFFFF"),
+        "font_family": raw_theme.get("font_family", "Aptos"),
+        "title_font_size": int(raw_theme.get("title_font_size", 24)),
+        "hero_title_font_size": int(raw_theme.get("hero_title_font_size", 28)),
+        "subtitle_font_size": int(raw_theme.get("subtitle_font_size", 18)),
+        "body_font_size": int(raw_theme.get("body_font_size", 16)),
+        "table_header_font_size": int(raw_theme.get("table_header_font_size", 11)),
+        "table_body_font_size": int(raw_theme.get("table_body_font_size", 10)),
+        "footer_font_size": int(raw_theme.get("footer_font_size", 10)),
+        "chart_palette": [str(color).lstrip("#") for color in chart_palette],
+    }
+
+
+def apply_run_style(
+    run,
+    font_name: str,
+    font_size: int,
+    rgb: tuple[int, int, int],
+    bold: bool = False,
+):
     from pptx.dml.color import RGBColor
     from pptx.util import Pt
 
@@ -48,26 +91,45 @@ def apply_run_style(run, font_name: str, font_size: int, rgb: tuple[int, int, in
     run.font.color.rgb = RGBColor(*rgb)
 
 
-def add_title_textbox(slide, title: str, font_name: str, text_rgb: tuple[int, int, int]):
+def add_textbox(slide, left: float, top: float, width: float, height: float):
     from pptx.util import Inches
 
-    box = slide.shapes.add_textbox(Inches(0.6), Inches(0.45), Inches(12.1), Inches(0.8))
+    return slide.shapes.add_textbox(
+        Inches(left), Inches(top), Inches(width), Inches(height)
+    )
+
+
+def add_title_textbox(slide, title: str, theme: dict[str, Any]):
+    box = add_textbox(slide, 0.6, 0.45, 12.1, 0.8)
     paragraph = box.text_frame.paragraphs[0]
     run = paragraph.add_run()
     run.text = title
-    apply_run_style(run, font_name, 24, text_rgb, bold=True)
+    apply_run_style(
+        run,
+        theme["font_family"],
+        theme["title_font_size"],
+        hex_to_rgb(theme["text_color"]),
+        bold=True,
+    )
     return box
 
 
-def add_bullets_box(slide, bullets: list[str], left: float, top: float, width: float, height: float, font_name: str, text_rgb: tuple[int, int, int]):
-    from pptx.util import Inches
-
-    box = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
+def add_bullets_box(
+    slide,
+    bullets: list[str],
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    theme: dict[str, Any],
+    font_size: int | None = None,
+):
+    box = add_textbox(slide, left, top, width, height)
     frame = box.text_frame
     frame.word_wrap = True
 
     if not bullets:
-        bullets = ["No narrative content was provided for this slide."]
+        bullets = ["本页还没有填内容。"]
 
     first = True
     for bullet in bullets:
@@ -75,12 +137,27 @@ def add_bullets_box(slide, bullets: list[str], left: float, top: float, width: f
         paragraph.level = 0
         run = paragraph.add_run()
         run.text = bullet
-        apply_run_style(run, font_name, 18, text_rgb, bold=False)
+        apply_run_style(
+            run,
+            theme["font_family"],
+            font_size or theme["body_font_size"],
+            hex_to_rgb(theme["text_color"]),
+            bold=False,
+        )
         first = False
     return box
 
 
-def add_table_shape(slide, headers: list[str], rows: list[list[str]], left: float, top: float, width: float, height: float, theme: dict[str, Any]):
+def add_table_shape(
+    slide,
+    headers: list[str],
+    rows: list[list[str]],
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    theme: dict[str, Any],
+):
     from pptx.dml.color import RGBColor
     from pptx.util import Inches, Pt
 
@@ -102,14 +179,12 @@ def add_table_shape(slide, headers: list[str], rows: list[list[str]], left: floa
         cell = table.cell(0, idx)
         cell.text = header
         paragraph = cell.text_frame.paragraphs[0]
-        if paragraph.runs:
-            run = paragraph.runs[0]
-        else:
-            run = paragraph.add_run()
+        run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
+        if not paragraph.runs:
             run.text = header
         run.font.bold = True
         run.font.name = theme["font_family"]
-        run.font.size = Pt(11)
+        run.font.size = Pt(theme["table_header_font_size"])
         run.font.color.rgb = RGBColor(255, 255, 255)
         cell.fill.solid()
         cell.fill.fore_color.rgb = primary
@@ -121,25 +196,208 @@ def add_table_shape(slide, headers: list[str], rows: list[list[str]], left: floa
             paragraph = cell.text_frame.paragraphs[0]
             run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
             run.font.name = theme["font_family"]
-            run.font.size = Pt(10)
+            run.font.size = Pt(theme["table_body_font_size"])
             run.font.color.rgb = text_rgb
 
+    return table_shape
 
-def add_footer(slide, text: str, font_name: str, text_rgb: tuple[int, int, int]):
-    from pptx.util import Inches
 
+def add_footer(slide, text: str, theme: dict[str, Any]):
     if not text:
         return
 
-    box = slide.shapes.add_textbox(Inches(0.6), Inches(7.0), Inches(12.1), Inches(0.3))
+    box = add_textbox(slide, 0.6, 7.0, 12.1, 0.3)
     paragraph = box.text_frame.paragraphs[0]
     run = paragraph.add_run()
     run.text = text
-    apply_run_style(run, font_name, 10, text_rgb)
+    apply_run_style(
+        run,
+        theme["font_family"],
+        theme["footer_font_size"],
+        hex_to_rgb(theme["text_color"]),
+    )
 
 
-def normalize_rows(row_dicts: list[dict[str, Any]], headers: list[str]) -> list[list[str]]:
+def normalize_rows(
+    row_dicts: list[dict[str, Any]], headers: list[str]
+) -> list[list[str]]:
     return [[str(row.get(header, "")) for header in headers] for row in row_dicts]
+
+
+def add_slide_background(slide, prs, theme: dict[str, Any]) -> None:
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_SHAPE
+
+    background = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height
+    )
+    background.fill.solid()
+    background.fill.fore_color.rgb = RGBColor(
+        *hex_to_rgb(theme["background_color"])
+    )
+    background.line.fill.background()
+
+
+def add_top_accent(slide, theme: dict[str, Any]) -> None:
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.util import Inches
+
+    accent = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(0.5), Inches(12.0), Inches(0.12)
+    )
+    accent.fill.solid()
+    accent.fill.fore_color.rgb = RGBColor(*hex_to_rgb(theme["accent_color"]))
+    accent.line.fill.background()
+
+
+def resolve_chart_columns(
+    query_data: dict[str, Any],
+    category_column: str | None,
+    value_columns: list[str] | None,
+) -> tuple[str | None, list[str]]:
+    columns = query_data.get("columns", [])
+    rows = query_data.get("rows", [])
+    if not columns or not rows:
+        return None, []
+
+    resolved_category = category_column or columns[0]
+    resolved_values = list(value_columns or [])
+
+    if not resolved_values:
+        resolved_values = [
+            column
+            for column in columns
+            if column != resolved_category
+            and any(to_float(row.get(column)) is not None for row in rows)
+        ][:3]
+
+    return resolved_category, resolved_values
+
+
+def build_chart_series(
+    query_data: dict[str, Any],
+    category_column: str,
+    value_columns: list[str],
+    max_points: int,
+) -> tuple[list[str], list[tuple[str, list[float]]]]:
+    rows = query_data.get("rows", [])[:max_points]
+    categories: list[str] = []
+    series_map = {column: [] for column in value_columns}
+
+    for row in rows:
+        categories.append(str(row.get(category_column, "")))
+        for column in value_columns:
+            value = to_float(row.get(column))
+            series_map[column].append(0.0 if value is None else value)
+
+    series = [(column, values) for column, values in series_map.items()]
+    return categories, series
+
+
+def chart_type_from_name(name: str):
+    from pptx.enum.chart import XL_CHART_TYPE
+
+    mapping = {
+        "column": XL_CHART_TYPE.COLUMN_CLUSTERED,
+        "bar": XL_CHART_TYPE.BAR_CLUSTERED,
+        "line": XL_CHART_TYPE.LINE_MARKERS,
+        "line_markers": XL_CHART_TYPE.LINE_MARKERS,
+        "area": XL_CHART_TYPE.AREA,
+        "pie": XL_CHART_TYPE.PIE,
+    }
+    return mapping.get(str(name).lower(), XL_CHART_TYPE.LINE_MARKERS)
+
+
+def style_chart(chart, theme: dict[str, Any], chart_type_name: str) -> None:
+    from pptx.dml.color import RGBColor
+    from pptx.enum.chart import XL_LEGEND_POSITION
+    from pptx.util import Pt
+
+    chart.has_title = False
+    chart.has_legend = len(chart.series) > 1 and chart_type_name != "pie"
+    if chart.has_legend:
+        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+        chart.legend.include_in_layout = False
+        try:
+            chart.legend.font.name = theme["font_family"]
+            chart.legend.font.size = Pt(theme["table_body_font_size"])
+        except AttributeError:
+            pass
+
+    plot = chart.plots[0]
+    plot.has_data_labels = False
+
+    palette = theme["chart_palette"]
+    for index, series in enumerate(chart.series):
+        color = RGBColor(*hex_to_rgb(palette[index % len(palette)]))
+        try:
+            series.format.fill.solid()
+            series.format.fill.fore_color.rgb = color
+        except AttributeError:
+            pass
+        try:
+            series.format.line.color.rgb = color
+        except AttributeError:
+            pass
+
+    try:
+        category_axis = chart.category_axis
+        category_axis.tick_labels.font.name = theme["font_family"]
+        category_axis.tick_labels.font.size = Pt(theme["table_body_font_size"])
+    except AttributeError:
+        pass
+
+    try:
+        value_axis = chart.value_axis
+        value_axis.has_major_gridlines = True
+        value_axis.tick_labels.font.name = theme["font_family"]
+        value_axis.tick_labels.font.size = Pt(theme["table_body_font_size"])
+    except AttributeError:
+        pass
+
+
+def add_chart_shape(
+    slide,
+    query_data: dict[str, Any],
+    slide_data: dict[str, Any],
+    theme: dict[str, Any],
+):
+    from pptx.chart.data import ChartData
+    from pptx.util import Inches
+
+    category_column, value_columns = resolve_chart_columns(
+        query_data,
+        slide_data.get("category_column"),
+        slide_data.get("value_columns"),
+    )
+    if not category_column or not value_columns:
+        return None
+
+    max_points = int(slide_data.get("max_points", 12))
+    categories, series_data = build_chart_series(
+        query_data, category_column, value_columns, max_points
+    )
+    if not categories or not series_data:
+        return None
+
+    chart_data = ChartData()
+    chart_data.categories = categories
+    for series_name, values in series_data:
+        chart_data.add_series(series_name, values)
+
+    chart_type_name = str(slide_data.get("chart_type", "line")).lower()
+    chart_shape = slide.shapes.add_chart(
+        chart_type_from_name(chart_type_name),
+        Inches(0.7),
+        Inches(2.2),
+        Inches(12.0),
+        Inches(4.25),
+        chart_data,
+    )
+    chart = chart_shape.chart
+    style_chart(chart, theme, chart_type_name)
+    return chart_shape
 
 
 def render_title_slide(prs, slide_data: dict[str, Any], theme: dict[str, Any]):
@@ -148,12 +406,7 @@ def render_title_slide(prs, slide_data: dict[str, Any], theme: dict[str, Any]):
     from pptx.util import Inches
 
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    background = slide.shapes.add_shape(
-        MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height
-    )
-    background.fill.solid()
-    background.fill.fore_color.rgb = RGBColor(*hex_to_rgb(theme["background_color"]))
-    background.line.fill.background()
+    add_slide_background(slide, prs, theme)
 
     accent = slide.shapes.add_shape(
         MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.0), Inches(0.22), Inches(4.5)
@@ -162,58 +415,53 @@ def render_title_slide(prs, slide_data: dict[str, Any], theme: dict[str, Any]):
     accent.fill.fore_color.rgb = RGBColor(*hex_to_rgb(theme["accent_color"]))
     accent.line.fill.background()
 
-    title_box = slide.shapes.add_textbox(Inches(1.1), Inches(1.2), Inches(10.8), Inches(1.8))
+    title_box = add_textbox(slide, 1.1, 1.2, 10.8, 1.8)
     paragraph = title_box.text_frame.paragraphs[0]
     run = paragraph.add_run()
     run.text = slide_data.get("title", "")
-    apply_run_style(run, theme["font_family"], 28, hex_to_rgb(theme["text_color"]), bold=True)
+    apply_run_style(
+        run,
+        theme["font_family"],
+        theme["hero_title_font_size"],
+        hex_to_rgb(theme["text_color"]),
+        bold=True,
+    )
 
-    subtitle_box = slide.shapes.add_textbox(Inches(1.1), Inches(3.0), Inches(10.8), Inches(0.8))
+    subtitle_box = add_textbox(slide, 1.1, 3.0, 10.8, 0.8)
     subtitle_paragraph = subtitle_box.text_frame.paragraphs[0]
     subtitle_run = subtitle_paragraph.add_run()
     subtitle_run.text = slide_data.get("subtitle", "")
-    apply_run_style(subtitle_run, theme["font_family"], 18, hex_to_rgb(theme["text_color"]))
-
-
-def render_schema_slide(prs, slide_data: dict[str, Any], payload: dict[str, Any], theme: dict[str, Any]):
-    from pptx.dml.color import RGBColor
-    from pptx.enum.shapes import MSO_SHAPE
-    from pptx.util import Inches
-
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    accent = slide.shapes.add_shape(
-        MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(0.5), Inches(12.0), Inches(0.12)
+    apply_run_style(
+        subtitle_run,
+        theme["font_family"],
+        theme["subtitle_font_size"],
+        hex_to_rgb(theme["text_color"]),
     )
-    accent.fill.solid()
-    accent.fill.fore_color.rgb = RGBColor(*hex_to_rgb(theme["accent_color"]))
-    accent.line.fill.background()
 
-    add_title_textbox(slide, slide_data["title"], theme["font_family"], hex_to_rgb(theme["text_color"]))
+
+def render_schema_slide(
+    prs, slide_data: dict[str, Any], payload: dict[str, Any], theme: dict[str, Any]
+):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    add_slide_background(slide, prs, theme)
+    add_top_accent(slide, theme)
+
+    add_title_textbox(slide, slide_data["title"], theme)
 
     intro_text = slide_data.get("intro_text", "")
     if intro_text:
-        add_bullets_box(
-            slide,
-            [intro_text],
-            0.7,
-            1.1,
-            12.0,
-            0.5,
-            theme["font_family"],
-            hex_to_rgb(theme["text_color"]),
-        )
+        add_bullets_box(slide, [intro_text], 0.7, 1.1, 12.0, 0.5, theme)
 
     tables = slide_data.get("tables", [])
     if not tables:
         add_bullets_box(
             slide,
-            ["No schema tables were configured for this slide."],
+            ["这一页没有配置 schema 表。"],
             0.7,
             1.5,
             12.0,
             1.0,
-            theme["font_family"],
-            hex_to_rgb(theme["text_color"]),
+            theme,
         )
         return
 
@@ -225,52 +473,45 @@ def render_schema_slide(prs, slide_data: dict[str, Any], payload: dict[str, Any]
         headers = ["column_name", "data_type", "is_partition_key", "column_comment"]
         normalized = normalize_rows(schema_rows, headers)[:8]
         if not normalized:
-            normalized = [["No schema rows returned", "", "", ""]]
-        add_table_shape(slide, headers, normalized, 0.7, top, 12.0, per_table_height - 0.15, theme)
+            normalized = [["没有查到 schema 结果", "", "", ""]]
+        add_table_shape(
+            slide,
+            headers,
+            normalized,
+            0.7,
+            top,
+            12.0,
+            per_table_height - 0.15,
+            theme,
+        )
         top += per_table_height
 
-    add_footer(slide, slide_data.get("speaker_notes", ""), theme["font_family"], hex_to_rgb(theme["text_color"]))
+    add_footer(slide, slide_data.get("speaker_notes", ""), theme)
 
 
-def render_table_slide(prs, slide_data: dict[str, Any], payload: dict[str, Any], theme: dict[str, Any]):
-    from pptx.enum.shapes import MSO_SHAPE
-    from pptx.util import Inches
-    from pptx.dml.color import RGBColor
-
+def render_table_slide(
+    prs, slide_data: dict[str, Any], payload: dict[str, Any], theme: dict[str, Any]
+):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    accent = slide.shapes.add_shape(
-        MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(0.5), Inches(12.0), Inches(0.12)
-    )
-    accent.fill.solid()
-    accent.fill.fore_color.rgb = RGBColor(*hex_to_rgb(theme["accent_color"]))
-    accent.line.fill.background()
+    add_slide_background(slide, prs, theme)
+    add_top_accent(slide, theme)
 
-    add_title_textbox(slide, slide_data["title"], theme["font_family"], hex_to_rgb(theme["text_color"]))
+    add_title_textbox(slide, slide_data["title"], theme)
 
     takeaways = slide_data.get("takeaway_bullets", [])
-    add_bullets_box(
-        slide,
-        takeaways,
-        0.7,
-        1.1,
-        12.0,
-        1.0,
-        theme["font_family"],
-        hex_to_rgb(theme["text_color"]),
-    )
+    add_bullets_box(slide, takeaways, 0.7, 1.1, 12.0, 1.0, theme)
 
     query_name = slide_data["query"]
     query_data = payload["queries"].get(query_name)
     if not query_data:
         add_bullets_box(
             slide,
-            [f"Query not found in payload: {query_name}"],
+            [f"没有在 payload 里找到查询结果：{query_name}"],
             0.7,
             2.0,
             12.0,
             1.0,
-            theme["font_family"],
-            hex_to_rgb(theme["text_color"]),
+            theme,
         )
         return
 
@@ -278,25 +519,59 @@ def render_table_slide(prs, slide_data: dict[str, Any], payload: dict[str, Any],
     max_rows = int(slide_data.get("max_rows", 12))
     rows = normalize_rows(query_data["rows"][:max_rows], headers)
     if not rows:
-        rows = [["No rows returned"] + [""] * (len(headers) - 1)]
+        rows = [["没有返回数据"] + [""] * (len(headers) - 1)]
     add_table_shape(slide, headers, rows, 0.7, 2.2, 12.0, 4.4, theme)
-    add_footer(slide, slide_data.get("speaker_notes", ""), theme["font_family"], hex_to_rgb(theme["text_color"]))
+    add_footer(slide, slide_data.get("speaker_notes", ""), theme)
+
+
+def render_chart_slide(
+    prs, slide_data: dict[str, Any], payload: dict[str, Any], theme: dict[str, Any]
+):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    add_slide_background(slide, prs, theme)
+    add_top_accent(slide, theme)
+
+    add_title_textbox(slide, slide_data["title"], theme)
+
+    takeaways = slide_data.get("takeaway_bullets", [])
+    add_bullets_box(slide, takeaways, 0.7, 1.1, 12.0, 1.0, theme)
+
+    query_name = slide_data["query"]
+    query_data = payload["queries"].get(query_name)
+    if not query_data:
+        add_bullets_box(
+            slide,
+            [f"没有在 payload 里找到查询结果：{query_name}"],
+            0.7,
+            2.0,
+            12.0,
+            1.0,
+            theme,
+        )
+        return
+
+    chart_shape = add_chart_shape(slide, query_data, slide_data, theme)
+    if chart_shape is None:
+        add_bullets_box(
+            slide,
+            ["这一页没有足够的维度列或数值列，暂时没法生成原生图表。"],
+            0.7,
+            2.0,
+            12.0,
+            1.0,
+            theme,
+        )
+        return
+
+    add_footer(slide, slide_data.get("speaker_notes", ""), theme)
 
 
 def render_bullet_slide(prs, slide_data: dict[str, Any], theme: dict[str, Any]):
-    from pptx.enum.shapes import MSO_SHAPE
-    from pptx.util import Inches
-    from pptx.dml.color import RGBColor
-
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    accent = slide.shapes.add_shape(
-        MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(0.5), Inches(12.0), Inches(0.12)
-    )
-    accent.fill.solid()
-    accent.fill.fore_color.rgb = RGBColor(*hex_to_rgb(theme["accent_color"]))
-    accent.line.fill.background()
+    add_slide_background(slide, prs, theme)
+    add_top_accent(slide, theme)
 
-    add_title_textbox(slide, slide_data["title"], theme["font_family"], hex_to_rgb(theme["text_color"]))
+    add_title_textbox(slide, slide_data["title"], theme)
     subtitle = slide_data.get("subtitle", "")
     if subtitle:
         add_bullets_box(
@@ -306,21 +581,12 @@ def render_bullet_slide(prs, slide_data: dict[str, Any], theme: dict[str, Any]):
             1.1,
             12.0,
             0.4,
-            theme["font_family"],
-            hex_to_rgb(theme["text_color"]),
+            theme,
+            font_size=theme["subtitle_font_size"],
         )
 
-    add_bullets_box(
-        slide,
-        slide_data.get("bullets", []),
-        0.9,
-        1.8,
-        11.6,
-        4.8,
-        theme["font_family"],
-        hex_to_rgb(theme["text_color"]),
-    )
-    add_footer(slide, slide_data.get("speaker_notes", ""), theme["font_family"], hex_to_rgb(theme["text_color"]))
+    add_bullets_box(slide, slide_data.get("bullets", []), 0.9, 1.8, 11.6, 4.8, theme)
+    add_footer(slide, slide_data.get("speaker_notes", ""), theme)
 
 
 def main() -> None:
@@ -339,14 +605,7 @@ def main() -> None:
     rendered_config = deep_render(base_config, context)
     plan = load_json(plan_path)
 
-    theme = rendered_config.get("report", {}).get("theme", {})
-    theme = {
-        "primary_color": theme.get("primary_color", "0F4C81"),
-        "accent_color": theme.get("accent_color", "F28E2B"),
-        "text_color": theme.get("text_color", "1F1F1F"),
-        "background_color": theme.get("background_color", "FFFFFF"),
-        "font_family": theme.get("font_family", "Arial"),
-    }
+    theme = build_theme(rendered_config.get("report", {}).get("theme", {}))
 
     prs = Presentation()
     prs.slide_width = Inches(13.333)
@@ -360,6 +619,8 @@ def main() -> None:
             render_schema_slide(prs, slide_data, payload, theme)
         elif slide_type == "table":
             render_table_slide(prs, slide_data, payload, theme)
+        elif slide_type == "chart":
+            render_chart_slide(prs, slide_data, payload, theme)
         elif slide_type == "ai_bullets":
             render_bullet_slide(prs, slide_data, theme)
         else:

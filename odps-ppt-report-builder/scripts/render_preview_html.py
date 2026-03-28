@@ -23,6 +23,16 @@ def load_json(path: Path) -> Any:
         return json.load(handle)
 
 
+def to_float(value: Any) -> float | None:
+    try:
+        text = str(value).replace(",", "").strip()
+        if not text:
+            return None
+        return float(text)
+    except ValueError:
+        return None
+
+
 def render_table(headers: list[str], rows: list[dict[str, Any]], limit: int) -> str:
     shown = rows[:limit]
     head = "".join(f"<th>{escape(str(header))}</th>" for header in headers)
@@ -34,6 +44,44 @@ def render_table(headers: list[str], rows: list[dict[str, Any]], limit: int) -> 
     if not body_rows:
         body_rows.append(f"<tr><td colspan='{len(headers)}'>No rows returned.</td></tr>")
     return f"<table><thead><tr>{head}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
+
+
+def render_chart_preview(slide: dict[str, Any], payload: dict[str, Any]) -> str:
+    query_data = payload.get("queries", {}).get(slide.get("query"), {})
+    rows = query_data.get("rows", [])
+    columns = query_data.get("columns", [])
+    category_column = slide.get("category_column") or (columns[0] if columns else "")
+    value_columns = slide.get("value_columns") or [
+        column
+        for column in columns
+        if column != category_column
+        and any(to_float(row.get(column)) is not None for row in rows)
+    ][:3]
+
+    if not rows or not category_column or not value_columns:
+        return "<p class='notes'>Chart preview is not available for this slide yet.</p>"
+
+    chart_rows = rows[: int(slide.get("max_points", 10))]
+    first_metric = value_columns[0]
+    values = [to_float(row.get(first_metric)) or 0.0 for row in chart_rows]
+    max_value = max(values) if values else 0.0
+    bars = []
+    for row, value in zip(chart_rows, values):
+        width = 0 if max_value <= 0 else value / max_value * 100
+        bars.append(
+            "<div class='chart-row'>"
+            f"<span class='chart-label'>{escape(str(row.get(category_column, '')))}</span>"
+            "<div class='chart-track'>"
+            f"<div class='chart-bar' style='width:{width:.1f}%'></div>"
+            "</div>"
+            f"<span class='chart-value'>{escape(str(row.get(first_metric, '')))}</span>"
+            "</div>"
+        )
+    return (
+        f"<p class='chart-meta'>Chart: {escape(str(slide.get('chart_type', 'line')))} | "
+        f"Category: {escape(str(category_column))} | Series: {escape(', '.join(value_columns))}</p>"
+        + "".join(bars)
+    )
 
 
 def render_slide(slide: dict[str, Any], payload: dict[str, Any]) -> str:
@@ -62,6 +110,11 @@ def render_slide(slide: dict[str, Any], payload: dict[str, Any]) -> str:
         query_data = payload.get("queries", {}).get(slide.get("query"), {})
         headers = query_data.get("columns", [])
         parts.append(render_table(headers, query_data.get("rows", []), int(slide.get("max_rows", 10))))
+    elif slide_type == "chart":
+        bullets = slide.get("takeaway_bullets", [])
+        if bullets:
+            parts.append("<ul>" + "".join(f"<li>{escape(str(item))}</li>" for item in bullets) + "</ul>")
+        parts.append(render_chart_preview(slide, payload))
     elif slide_type == "ai_bullets":
         bullets = slide.get("bullets", [])
         parts.append("<ul>" + "".join(f"<li>{escape(str(item))}</li>" for item in bullets) + "</ul>")
@@ -171,6 +224,30 @@ def main() -> None:
       border-top: 1px dashed #d4dbe6;
       color: #667085;
       font-size: 13px;
+    }}
+    .chart-meta {{
+      margin: 12px 0 16px;
+      color: #5b6472;
+    }}
+    .chart-row {{
+      display: grid;
+      grid-template-columns: 180px 1fr 80px;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 10px;
+    }}
+    .chart-label, .chart-value {{
+      font-size: 14px;
+    }}
+    .chart-track {{
+      height: 16px;
+      background: #edf1f6;
+      border-radius: 999px;
+      overflow: hidden;
+    }}
+    .chart-bar {{
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
     }}
   </style>
 </head>
