@@ -1,0 +1,4 @@
+/odps-ppt-report-builder/.venv/
+/output/
+__pycache__/
+*.pyc
