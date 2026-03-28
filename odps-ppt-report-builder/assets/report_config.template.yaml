@@ -1,0 +1,84 @@
+vars:
+  report_name: "weekly_business_review"
+  start_date: "2026-03-22"
+  end_date: "2026-03-28"
+
+odps:
+  project: "your_project"
+  endpoint: "https://service.cn-hangzhou.maxcompute.aliyun.com/api"
+  config_file: ""
+  bin: ""
+  field_delim: "\t"
+  pre_sql:
+    - 'set odps.sql.select.output.format={"needHeader":false,"fieldDelim":"\t"}'
+
+tables:
+  - name: "fact_sales_daily"
+    project: "your_project"
+    comment: "Daily business metrics"
+  - name: "fact_item_daily"
+    project: "your_project"
+    comment: "Daily item performance"
+
+queries:
+  - name: "overview"
+    title: "Overview Metrics"
+    columns: ["ds", "gmv", "order_cnt", "buyer_cnt"]
+    sql: |
+      select ds, gmv, order_cnt, buyer_cnt
+      from your_project.fact_sales_daily
+      where ds between '{{start_date}}' and '{{end_date}}'
+      order by ds;
+
+  - name: "top_items"
+    title: "Top Items"
+    columns: ["item_name", "gmv", "order_cnt"]
+    sql: |
+      select item_name, gmv, order_cnt
+      from your_project.fact_item_daily
+      where ds = '{{end_date}}'
+      order by gmv desc
+      limit 10;
+
+report:
+  title: "Weekly Business Review"
+  subtitle: "{{start_date}} to {{end_date}}"
+  output_dir: "output"
+  output_filename: "{{report_name}}_{{end_date}}.pptx"
+  theme:
+    primary_color: "0F4C81"
+    accent_color: "F28E2B"
+    text_color: "1F1F1F"
+    background_color: "FFFFFF"
+    font_family: "Arial"
+
+slides:
+  - type: "title"
+    title: "{{report_name}}"
+    subtitle: "{{start_date}} to {{end_date}}"
+
+  - type: "schema"
+    title: "Source Table Schema"
+    tables: ["fact_sales_daily", "fact_item_daily"]
+
+  - type: "table"
+    title: "Overview Metrics"
+    query: "overview"
+    max_rows: 12
+    takeaway_prompt: "Write exactly 2 bullets that summarize the strongest signals from overview."
+
+  - type: "table"
+    title: "Top Items"
+    query: "top_items"
+    max_rows: 10
+    takeaway_prompt: "Write exactly 2 bullets that summarize product winners and laggards."
+
+  - type: "ai_bullets"
+    title: "Executive Summary"
+    prompt: |
+      Use the ODPS results to write exactly 3 bullets:
+      1. Main signal
+      2. Likely reason supported by the data
+      3. Next action
+    min_bullets: 3
+    max_bullets: 3
