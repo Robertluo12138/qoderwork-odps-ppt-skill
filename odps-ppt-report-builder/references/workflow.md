@@ -23,6 +23,18 @@
 - The most important file in this mode is `assets/company_private_brief.template.md`, which becomes `assets/company_private_brief.md` after the user fills it on the company machine.
 - If a native `.pptx` cannot be rendered, the skill should still output a complete slide manuscript and a JSON slide plan.
 
+## Weak-Model Guardrails
+
+- On a weak model, always check environment first and report one result at a time.
+- Do not mix macOS and Windows instructions in the same answer.
+- If the user gives only a natural-language request like "generate Chagee March PPT", map it into:
+  - business
+  - date range
+  - report type
+- If year is omitted, default to the current year and say that assumption explicitly.
+- If only one required field is missing, ask only one short question.
+- If a required file like `company_private_brief.md` is missing, stop and give the exact next step rather than a general explanation.
+
 ## Scripted Mode
 
 - Use scripted mode only when the current machine already has Python or the user explicitly wants a repeatable automation path.

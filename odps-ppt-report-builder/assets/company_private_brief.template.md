@@ -11,6 +11,32 @@ Fill this file only on the company machine. This is the main place to put confid
 - audience:
 - default_language:
 
+## 1.1 Natural-Language Mapping Rules
+
+Use this section to help a weak Qoder Work model understand short user requests.
+
+- default_report_type:
+- default_date_rule_if_user_only_says_month:
+- default_date_rule_if_user_only_says_last_week:
+- default_date_rule_if_user_only_says_yesterday:
+- if_year_is_missing_use_current_year: `yes` or `no`
+
+### Business Aliases
+
+- alias_1:
+  - user_may_say:
+  - normalize_to:
+- alias_2:
+  - user_may_say:
+  - normalize_to:
+
+### Example Requests
+
+- example_1: `帮我生成霸王茶姬三月的 PPT`
+  - interpret_as:
+- example_2:
+  - interpret_as:
+
 ## 2. ODPS Environment
 
 - odpscmd_binary:

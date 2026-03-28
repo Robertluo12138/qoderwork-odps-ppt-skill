@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import platform
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -39,16 +40,95 @@ def to_float(value: Any) -> float | None:
         return None
 
 
-def load_font(size: int):
+def resolve_theme_font(raw_theme: dict[str, Any], base_key: str, default_value: str) -> str:
+    system_name = platform.system().lower()
+    suffix = "other"
+    if system_name == "darwin":
+        suffix = "mac"
+    elif system_name == "windows":
+        suffix = "windows"
+    return str(raw_theme.get(f"{base_key}_{suffix}") or raw_theme.get(base_key) or default_value)
+
+
+def default_cjk_preview_font() -> str:
+    system_name = platform.system().lower()
+    if system_name == "darwin":
+        return "Hiragino Sans GB"
+    if system_name == "windows":
+        return "Microsoft YaHei"
+    return "Noto Sans CJK SC"
+
+
+def font_candidates(theme: dict[str, Any]) -> list[str]:
+    family_candidates = {
+        "Arial Unicode MS": [
+            "/Library/Fonts/Arial Unicode.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        ],
+        "Hiragino Sans GB": [
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        ],
+        "STHeiti": [
+            "/System/Library/Fonts/STHeiti Medium.ttc",
+            "/System/Library/Fonts/STHeiti Light.ttc",
+        ],
+        "Microsoft YaHei": [
+            "C:/Windows/Fonts/msyh.ttc",
+            "C:/Windows/Fonts/msyh.ttf",
+        ],
+        "DengXian": [
+            "C:/Windows/Fonts/Deng.ttf",
+        ],
+        "SimHei": [
+            "C:/Windows/Fonts/simhei.ttf",
+        ],
+        "SimSun": [
+            "C:/Windows/Fonts/simsun.ttc",
+        ],
+        "Noto Sans CJK SC": [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        ],
+        "DejaVu Sans": [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ],
+    }
+    ordered_families = [
+        theme.get("cjk_font_family", ""),
+        theme.get("font_family", ""),
+        "Arial Unicode MS",
+        "Hiragino Sans GB",
+        "STHeiti",
+        "Microsoft YaHei",
+        "DengXian",
+        "SimHei",
+        "SimSun",
+        "Noto Sans CJK SC",
+        "DejaVu Sans",
+    ]
+    seen: set[str] = set()
+    candidates: list[str] = []
+    for family in ordered_families:
+        for path in family_candidates.get(str(family), []):
+            if path not in seen:
+                seen.add(path)
+                candidates.append(path)
+    candidates.extend(
+        [
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/System/Library/Fonts/Supplemental/Helvetica.ttc",
+            "C:/Windows/Fonts/segoeui.ttf",
+            "C:/Windows/Fonts/arial.ttf",
+        ]
+    )
+    return candidates
+
+
+def load_font(size: int, theme: dict[str, Any]):
     from PIL import ImageFont
 
-    candidates = [
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-        "/System/Library/Fonts/Supplemental/Helvetica.ttc",
-        "C:/Windows/Fonts/arial.ttf",
-        "C:/Windows/Fonts/segoeui.ttf",
-    ]
-    for candidate in candidates:
+    for candidate in font_candidates(theme):
         path = Path(candidate)
         if path.exists():
             return ImageFont.truetype(str(path), size=size)
@@ -112,10 +192,10 @@ def render_slide_image(slide: dict[str, Any], payload: dict[str, Any], theme: di
     width, height = 1600, 900
     image = Image.new("RGB", (width, height), color=hex_to_rgb(theme["background_color"]))
     draw = ImageDraw.Draw(image)
-    font_title = load_font(38)
-    font_subtitle = load_font(24)
-    font_body = load_font(22)
-    font_small = load_font(18)
+    font_title = load_font(38, theme)
+    font_subtitle = load_font(24, theme)
+    font_body = load_font(22, theme)
+    font_small = load_font(18, theme)
 
     draw.rectangle((0, 0, width, 18), fill=hex_to_rgb(theme["accent_color"]))
     draw.text((70, 60), str(slide.get("title", "")), fill=hex_to_rgb(theme["text_color"]), font=font_title)
@@ -130,7 +210,7 @@ def render_slide_image(slide: dict[str, Any], payload: dict[str, Any], theme: di
         title_lines = wrap(str(slide.get("title", "")), 28)
         start_y = 280
         for line in title_lines:
-            draw.text((110, start_y), line, fill=hex_to_rgb(theme["text_color"]), font=load_font(54))
+            draw.text((110, start_y), line, fill=hex_to_rgb(theme["text_color"]), font=load_font(54, theme))
             start_y += 74
         if subtitle:
             draw.text((110, start_y + 16), subtitle, fill=(92, 102, 116), font=font_subtitle)
@@ -209,12 +289,18 @@ def main() -> None:
     plan = load_json(Path(args.plan).resolve())
     context = payload.get("metadata", {}).get("variables", {})
     rendered_config = deep_render(config, context)
-    theme = rendered_config.get("report", {}).get("theme", {})
+    raw_theme = rendered_config.get("report", {}).get("theme", {})
     theme = {
-        "primary_color": theme.get("primary_color", "0F4C81"),
-        "accent_color": theme.get("accent_color", "F28E2B"),
-        "text_color": theme.get("text_color", "1F1F1F"),
-        "background_color": theme.get("background_color", "FFFFFF"),
+        "primary_color": raw_theme.get("primary_color", "0F4C81"),
+        "accent_color": raw_theme.get("accent_color", "F28E2B"),
+        "text_color": raw_theme.get("text_color", "1F1F1F"),
+        "background_color": raw_theme.get("background_color", "FFFFFF"),
+        "font_family": resolve_theme_font(raw_theme, "font_family", "Aptos"),
+        "cjk_font_family": resolve_theme_font(
+            raw_theme,
+            "cjk_font_family",
+            default_cjk_preview_font(),
+        ),
     }
 
     slide_images = [render_slide_image(slide, payload, theme) for slide in plan.get("slides", [])]
@@ -229,7 +315,7 @@ def main() -> None:
     sheet_height = rows * thumb_height + (rows + 1) * gap
     sheet = Image.new("RGB", (sheet_width, sheet_height), color=(240, 244, 249))
     sheet_draw = ImageDraw.Draw(sheet)
-    label_font = load_font(22)
+    label_font = load_font(22, theme)
 
     for index, slide_image in enumerate(slide_images):
         row = index // cols

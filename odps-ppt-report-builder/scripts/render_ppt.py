@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,48 @@ def ensure_dependencies() -> None:
         ) from exc
 
 
+def resolve_font_family(raw_theme: dict[str, Any]) -> str:
+    system_name = platform.system().lower()
+    if system_name == "darwin":
+        return str(
+            raw_theme.get("font_family_mac")
+            or raw_theme.get("font_family")
+            or "Aptos"
+        )
+    if system_name == "windows":
+        return str(
+            raw_theme.get("font_family_windows")
+            or raw_theme.get("font_family")
+            or "Aptos"
+        )
+    return str(
+        raw_theme.get("font_family_other")
+        or raw_theme.get("font_family")
+        or "Aptos"
+    )
+
+
+def resolve_cjk_font_family(raw_theme: dict[str, Any]) -> str:
+    system_name = platform.system().lower()
+    if system_name == "darwin":
+        return str(
+            raw_theme.get("cjk_font_family_mac")
+            or raw_theme.get("cjk_font_family")
+            or "Hiragino Sans GB"
+        )
+    if system_name == "windows":
+        return str(
+            raw_theme.get("cjk_font_family_windows")
+            or raw_theme.get("cjk_font_family")
+            or "Microsoft YaHei"
+        )
+    return str(
+        raw_theme.get("cjk_font_family_other")
+        or raw_theme.get("cjk_font_family")
+        or "Noto Sans CJK SC"
+    )
+
+
 def build_theme(raw_theme: dict[str, Any]) -> dict[str, Any]:
     chart_palette = raw_theme.get("chart_palette") or [
         "0F4C81",
@@ -63,7 +106,9 @@ def build_theme(raw_theme: dict[str, Any]) -> dict[str, Any]:
         "accent_color": raw_theme.get("accent_color", "F28E2B"),
         "text_color": raw_theme.get("text_color", "1F1F1F"),
         "background_color": raw_theme.get("background_color", "FFFFFF"),
-        "font_family": raw_theme.get("font_family", "Aptos"),
+        "font_family": resolve_font_family(raw_theme),
+        "cjk_font_family": resolve_cjk_font_family(raw_theme),
+        "language": str(raw_theme.get("language", "zh-CN")),
         "title_font_size": int(raw_theme.get("title_font_size", 24)),
         "hero_title_font_size": int(raw_theme.get("hero_title_font_size", 28)),
         "subtitle_font_size": int(raw_theme.get("subtitle_font_size", 18)),
@@ -75,20 +120,69 @@ def build_theme(raw_theme: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def contains_cjk(text: str) -> bool:
+    for char in text:
+        codepoint = ord(char)
+        if (
+            0x3400 <= codepoint <= 0x4DBF
+            or 0x4E00 <= codepoint <= 0x9FFF
+            or 0xF900 <= codepoint <= 0xFAFF
+            or 0x3040 <= codepoint <= 0x30FF
+            or 0xAC00 <= codepoint <= 0xD7AF
+        ):
+            return True
+    return False
+
+
+def set_run_typefaces(
+    run,
+    latin_font_name: str,
+    cjk_font_name: str,
+    language: str,
+) -> None:
+    from pptx.oxml.ns import qn
+    from pptx.oxml.xmlchemy import OxmlElement
+
+    rPr = run._r.get_or_add_rPr()
+    rPr.set("lang", language)
+
+    def upsert_font(tag: str, typeface: str) -> None:
+        child = rPr.find(qn(tag))
+        if child is None:
+            child = OxmlElement(tag)
+            rPr.insert_element_before(
+                child,
+                "a:hlinkClick",
+                "a:hlinkMouseOver",
+                "a:rtl",
+                "a:extLst",
+            )
+        child.set("typeface", typeface)
+
+    upsert_font("a:latin", latin_font_name)
+    upsert_font("a:ea", cjk_font_name or latin_font_name)
+    upsert_font("a:cs", cjk_font_name or latin_font_name)
+
+
 def apply_run_style(
     run,
     font_name: str,
     font_size: int,
     rgb: tuple[int, int, int],
     bold: bool = False,
+    cjk_font_name: str = "",
+    language: str = "zh-CN",
 ):
     from pptx.dml.color import RGBColor
     from pptx.util import Pt
 
-    run.font.name = font_name
+    run_text = getattr(run, "text", "") or ""
+    preferred_font = cjk_font_name if cjk_font_name and contains_cjk(run_text) else font_name
+    run.font.name = preferred_font
     run.font.size = Pt(font_size)
     run.font.bold = bold
     run.font.color.rgb = RGBColor(*rgb)
+    set_run_typefaces(run, font_name, cjk_font_name or preferred_font, language)
 
 
 def add_textbox(slide, left: float, top: float, width: float, height: float):
@@ -110,6 +204,8 @@ def add_title_textbox(slide, title: str, theme: dict[str, Any]):
         theme["title_font_size"],
         hex_to_rgb(theme["text_color"]),
         bold=True,
+        cjk_font_name=theme["cjk_font_family"],
+        language=theme["language"],
     )
     return box
 
@@ -143,6 +239,8 @@ def add_bullets_box(
             font_size or theme["body_font_size"],
             hex_to_rgb(theme["text_color"]),
             bold=False,
+            cjk_font_name=theme["cjk_font_family"],
+            language=theme["language"],
         )
         first = False
     return box
@@ -159,7 +257,7 @@ def add_table_shape(
     theme: dict[str, Any],
 ):
     from pptx.dml.color import RGBColor
-    from pptx.util import Inches, Pt
+    from pptx.util import Inches
 
     row_count = max(2, len(rows) + 1)
     col_count = max(1, len(headers))
@@ -182,10 +280,15 @@ def add_table_shape(
         run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
         if not paragraph.runs:
             run.text = header
-        run.font.bold = True
-        run.font.name = theme["font_family"]
-        run.font.size = Pt(theme["table_header_font_size"])
-        run.font.color.rgb = RGBColor(255, 255, 255)
+        apply_run_style(
+            run,
+            theme["font_family"],
+            theme["table_header_font_size"],
+            (255, 255, 255),
+            bold=True,
+            cjk_font_name=theme["cjk_font_family"],
+            language=theme["language"],
+        )
         cell.fill.solid()
         cell.fill.fore_color.rgb = primary
 
@@ -195,9 +298,14 @@ def add_table_shape(
             cell.text = value
             paragraph = cell.text_frame.paragraphs[0]
             run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
-            run.font.name = theme["font_family"]
-            run.font.size = Pt(theme["table_body_font_size"])
-            run.font.color.rgb = text_rgb
+            apply_run_style(
+                run,
+                theme["font_family"],
+                theme["table_body_font_size"],
+                hex_to_rgb(theme["text_color"]),
+                cjk_font_name=theme["cjk_font_family"],
+                language=theme["language"],
+            )
 
     return table_shape
 
@@ -215,6 +323,8 @@ def add_footer(slide, text: str, theme: dict[str, Any]):
         theme["font_family"],
         theme["footer_font_size"],
         hex_to_rgb(theme["text_color"]),
+        cjk_font_name=theme["cjk_font_family"],
+        language=theme["language"],
     )
 
 
@@ -320,7 +430,7 @@ def style_chart(chart, theme: dict[str, Any], chart_type_name: str) -> None:
         chart.legend.position = XL_LEGEND_POSITION.BOTTOM
         chart.legend.include_in_layout = False
         try:
-            chart.legend.font.name = theme["font_family"]
+            chart.legend.font.name = theme["cjk_font_family"] or theme["font_family"]
             chart.legend.font.size = Pt(theme["table_body_font_size"])
         except AttributeError:
             pass
@@ -343,7 +453,7 @@ def style_chart(chart, theme: dict[str, Any], chart_type_name: str) -> None:
 
     try:
         category_axis = chart.category_axis
-        category_axis.tick_labels.font.name = theme["font_family"]
+        category_axis.tick_labels.font.name = theme["cjk_font_family"] or theme["font_family"]
         category_axis.tick_labels.font.size = Pt(theme["table_body_font_size"])
     except AttributeError:
         pass
@@ -351,7 +461,7 @@ def style_chart(chart, theme: dict[str, Any], chart_type_name: str) -> None:
     try:
         value_axis = chart.value_axis
         value_axis.has_major_gridlines = True
-        value_axis.tick_labels.font.name = theme["font_family"]
+        value_axis.tick_labels.font.name = theme["cjk_font_family"] or theme["font_family"]
         value_axis.tick_labels.font.size = Pt(theme["table_body_font_size"])
     except AttributeError:
         pass
@@ -425,6 +535,8 @@ def render_title_slide(prs, slide_data: dict[str, Any], theme: dict[str, Any]):
         theme["hero_title_font_size"],
         hex_to_rgb(theme["text_color"]),
         bold=True,
+        cjk_font_name=theme["cjk_font_family"],
+        language=theme["language"],
     )
 
     subtitle_box = add_textbox(slide, 1.1, 3.0, 10.8, 0.8)
@@ -436,6 +548,8 @@ def render_title_slide(prs, slide_data: dict[str, Any], theme: dict[str, Any]):
         theme["font_family"],
         theme["subtitle_font_size"],
         hex_to_rgb(theme["text_color"]),
+        cjk_font_name=theme["cjk_font_family"],
+        language=theme["language"],
     )
 
 

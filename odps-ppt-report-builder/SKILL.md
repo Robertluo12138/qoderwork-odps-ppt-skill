@@ -19,6 +19,58 @@ description: "用固定 SQL 从 ODPS 取数、整理表结构，并按固定模�
 - 除非明确需要插图，否则不要把正文重点做成位图素材
 - 真正敏感的 SQL、表名、字段解释、PPT 规则，都放到 `assets/company_private_brief.md`
 
+## 短需求处理
+
+如果是第一次使用，或者用户只给了一句很短的话，优先按下面这个顺序处理：
+
+1. 先做检查，再做报告。
+2. 一次只处理一个系统，不要把 Mac 和 Windows 混在一起说。
+3. 每一步都先回报结果，再进入下一步。
+4. 如果缺文件、缺命令、缺权限，不要假装能继续，直接说清楚卡点。
+5. 不要把“建议”写成大段说明，改成可执行的下一步。
+6. 如果用户只给一句很短的话，先按固定规则补成结构化任务。
+
+用户如果只说这类话：
+
+- 帮我生成霸王茶姬三月的 PPT
+- 帮我出霸王茶姬月报
+- 帮我重跑上周周报
+
+按下面规则理解：
+
+1. 先从 `assets/company_private_brief.md` 找业务别名、报告模板和默认口径。
+2. 如果用户没写年份，默认当前年份，但要在回复里明确复述这个假设。
+3. 如果用户没写报告类型，就优先按私有说明里的默认模板来。
+4. 如果只缺一个关键信息，只问一个短问题，不要连续追问。
+5. 如果必要信息已经够了，就直接开始，不要先讲方案。
+
+## 首次检查项
+
+1. skill 位置对不对
+
+- Mac：`~/.qoderwork/skills/odps-ppt-report-builder/`
+- Windows：`%USERPROFILE%\.qoderwork\skills\odps-ppt-report-builder\`
+
+2. 私有说明在不在
+
+- 必须先检查 `assets/company_private_brief.md`
+- 如果没有，就明确告诉用户：
+  - 复制 `assets/company_private_brief.template.md`
+  - 改名为 `assets/company_private_brief.md`
+  - 让维护人补真实 SQL、表结构规则、PPT 要求
+
+3. `odpscmd` 在不在
+
+- Mac：先检查 `odpscmd --version` 或 `which odpscmd`
+- Windows：先检查 `odpscmd --version` 或 `where odpscmd`
+- 如果没有，不要直接继续生成报告
+
+4. 机器上有没有 Python
+
+- 没有 Python：默认继续走少安装模式
+- 已经有 Python：可以切脚本模式
+- 不要因为想走脚本模式，就强迫非技术同事先装 Python
+
 ## 装在哪里
 
 1. skill 本体
@@ -29,6 +81,7 @@ description: "用固定 SQL 从 ODPS 取数、整理表结构，并按固定模�
 
 - macOS：`~/.qoderwork-runtime/python/odps-ppt-report-builder/`
 - Windows：`%USERPROFILE%\.qoderwork-runtime\python\odps-ppt-report-builder\`
+- 如果两边的字体或版式有轻微偏差，优先在配置里分别调 `font_family_mac`、`font_family_windows` 以及 `cjk_font_family_mac`、`cjk_font_family_windows`
 
 3. 机器级工具
 
@@ -90,6 +143,23 @@ description: "用固定 SQL 从 ODPS 取数、整理表结构，并按固定模�
 - 3 到 5 条重点结论
 - 哪些数据没拿到，或者哪一步卡住了
 
+## 首次使用时按这个顺序来
+
+如果是第一次在这台电脑上使用，不要让用户自己猜下一步，按这个顺序往下做：
+
+1. 我先检查 skill 是否放对位置。
+2. 我再检查私有说明文件是否存在。
+3. 我再检查 `odpscmd` 是否可用。
+4. 如果上面都通过，我开始取数并整理大纲。
+
+如果缺东西，直接给这种结果：
+
+- 现在缺的是：`assets/company_private_brief.md`
+- 你下一步只需要做这件事：把模板复制成正式文件
+- 做完以后，把“继续”发给我
+
+不要给开放式问题，不要说“你想怎么做”，不要把 3 条路一起丢给用户选。
+
 ## 如果机器上有 Python，再走脚本模式
 
 只在两种情况下走这条路：
@@ -143,6 +213,7 @@ Windows:
 - 结论只写数据支持的内容，不要自己脑补业务原因
 - 能查 schema 就先查 schema，不要猜字段含义
 - 在少安装模式下，不要逼非技术同事折腾 Python
+- 用户如果只说一句自然语言需求，不要回一大段解释，先补齐最小参数后直接执行
 - 公共 skill 里不要硬编码敏感 SQL、表名、字段口径和写作要求
 - 可复用的东西放到 `config` 和脚本里，不要散落在临时 prompt 里
 - SQL、大纲、格式规则，以配置和私有说明为准
@@ -153,4 +224,5 @@ Windows:
 - `references/slide_plan_format.md`
 - `references/setup_strategy_zh.md`
 - `assets/company_private_brief.template.md`
+- `assets/quick_start_for_colleagues.md`
 - `assets/qoderwork_first_run_prompt.template.md`

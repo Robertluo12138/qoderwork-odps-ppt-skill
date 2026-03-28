@@ -51,6 +51,14 @@ report:
     text_color: "1F1F1F"
     background_color: "FFFFFF"
     font_family: "Aptos"
+    font_family_mac: "Aptos"
+    font_family_windows: "Aptos"
+    font_family_other: "DejaVu Sans"
+    cjk_font_family: "Arial Unicode MS"
+    cjk_font_family_mac: "Hiragino Sans GB"
+    cjk_font_family_windows: "Microsoft YaHei"
+    cjk_font_family_other: "Noto Sans CJK SC"
+    language: "zh-CN"
     title_font_size: 24
     hero_title_font_size: 28
     subtitle_font_size: 18
