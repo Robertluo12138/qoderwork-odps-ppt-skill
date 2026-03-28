@@ -233,7 +233,7 @@ def main() -> None:
         "queries": query_results,
     }
 
-    slide_plan = build_slidePlan(rendered_config, output_dir)
+    slide_plan = build_slide_plan(rendered_config, output_dir)
 
     dump_json(payload_path, payload)
     dump_json(plan_path, slide_plan)
