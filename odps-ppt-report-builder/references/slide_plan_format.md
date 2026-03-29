@@ -29,6 +29,7 @@ Required fields:
 
 Optional authoring fields:
 
+- `template`
 - `intro_text`
 - `speaker_notes`
 
@@ -42,6 +43,8 @@ Required fields:
 
 Optional authoring fields:
 
+- `template`
+- `support_query`: optional secondary query for overview support strips
 - `takeaway_prompt`
 - `takeaway_bullets`
 - `speaker_notes`
@@ -57,6 +60,7 @@ Required fields:
 
 Optional authoring fields:
 
+- `template`
 - `chart_type`
 - `category_column`
 - `value_columns`
@@ -75,11 +79,30 @@ Required fields:
 
 Optional authoring fields:
 
+- `template`
 - `subtitle`
 - `bullets`
 - `speaker_notes`
 - `min_bullets`
 - `max_bullets`
+
+## Suggested Template Names
+
+- `cover`: management-report cover page
+- `overview`: month-level opening business overview page
+- `kpi_summary`: month-level KPI summary page
+- `weekly_trend`: month trend page grouped by week
+- `comparison`: month comparison / evidence page
+- `time_slot`: time-slot structure page
+- `price_band`: price-band structure page
+- `time_price_matrix`: time-slot x price-band cross page
+- `city_distribution`: city contribution page
+- `aoi_distribution`: AOI structure page
+- `new_old_mix`: new vs returning customer structure page
+- `cluster_mix`: cluster detail page
+- `conclusion`: monthly conclusion and next-action page
+- `thanks`: clean closing / thank-you page
+- `appendix`: appendix / daily auxiliary data page
 
 ## Editing Rules
 

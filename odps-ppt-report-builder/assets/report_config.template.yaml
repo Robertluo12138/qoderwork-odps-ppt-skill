@@ -1,7 +1,9 @@
 vars:
-  report_name: "weekly_business_review"
-  start_date: "2026-03-22"
-  end_date: "2026-03-28"
+  brand_name: "你的品牌"
+  month_label: "2026年03月"
+  report_name: "monthly_business_review"
+  start_date: "2026-03-01"
+  end_date: "2026-03-31"
 
 odps:
   project: "your_project"
@@ -19,10 +21,22 @@ tables:
   - name: "fact_item_daily"
     project: "your_project"
     comment: "Daily item performance"
+  - name: "fact_slot_daily"
+    project: "your_project"
+    comment: "Time slot performance"
+  - name: "fact_city_daily"
+    project: "your_project"
+    comment: "City performance"
+  - name: "fact_aoi_daily"
+    project: "your_project"
+    comment: "AOI performance"
+  - name: "fact_user_segment_daily"
+    project: "your_project"
+    comment: "Customer mix performance"
 
 queries:
-  - name: "overview"
-    title: "Overview Metrics"
+  - name: "overview_daily"
+    title: "Monthly Overview Daily Base"
     columns: ["ds", "gmv", "order_cnt", "buyer_cnt"]
     sql: |
       select ds, gmv, order_cnt, buyer_cnt
@@ -30,25 +44,100 @@ queries:
       where ds between '{{start_date}}' and '{{end_date}}'
       order by ds;
 
-  - name: "top_items"
-    title: "Top Items"
-    columns: ["item_name", "gmv", "order_cnt"]
+  - name: "monthly_comparison"
+    title: "Monthly Comparison"
+    columns: ["period_label", "gmv", "order_cnt", "buyer_cnt"]
     sql: |
-      select item_name, gmv, order_cnt
-      from your_project.fact_item_daily
-      where ds = '{{end_date}}'
-      order by gmv desc
-      limit 10;
+      -- Replace with your own current-month vs last-month / reference-period logic.
+      select period_label, gmv, order_cnt, buyer_cnt
+      from your_project.monthly_comparison_view
+      where month_end = '{{end_date}}'
+      order by period_label;
+
+  - name: "time_slot"
+    title: "Time Slot Structure"
+    columns: ["time_slot", "gmv", "order_cnt"]
+    sql: |
+      -- Replace with your own monthly time-slot aggregation.
+      select time_slot, gmv, order_cnt
+      from your_project.monthly_time_slot_view
+      where month_end = '{{end_date}}'
+      order by gmv desc;
+
+  - name: "price_band"
+    title: "Price Band Structure"
+    columns: ["price_band", "gmv", "order_cnt"]
+    sql: |
+      -- Replace with your own monthly price-band aggregation.
+      select price_band, gmv, order_cnt
+      from your_project.monthly_price_band_view
+      where month_end = '{{end_date}}'
+      order by gmv desc;
+
+  - name: "time_price_matrix"
+    title: "Time Slot x Price Band"
+    columns: ["time_slot", "price_band", "gmv", "order_cnt"]
+    sql: |
+      -- Replace with your own monthly time-slot x price-band matrix.
+      select time_slot, price_band, gmv, order_cnt
+      from your_project.monthly_time_price_matrix_view
+      where month_end = '{{end_date}}'
+      order by gmv desc;
+
+  - name: "city_distribution"
+    title: "City Distribution"
+    columns: ["city_name", "gmv", "order_cnt"]
+    sql: |
+      -- Replace with your own monthly city distribution query.
+      select city_name, gmv, order_cnt
+      from your_project.monthly_city_distribution_view
+      where month_end = '{{end_date}}'
+      order by gmv desc;
+
+  - name: "aoi_distribution"
+    title: "AOI Distribution"
+    columns: ["aoi_name", "gmv", "order_cnt"]
+    sql: |
+      -- Replace with your own monthly AOI distribution query.
+      select aoi_name, gmv, order_cnt
+      from your_project.monthly_aoi_distribution_view
+      where month_end = '{{end_date}}'
+      order by gmv desc;
+
+  - name: "new_old_mix"
+    title: "New vs Returning Customers"
+    columns: ["customer_type", "gmv", "order_cnt", "buyer_cnt"]
+    sql: |
+      -- Replace with your own monthly new/old customer query.
+      select customer_type, gmv, order_cnt, buyer_cnt
+      from your_project.monthly_new_old_mix_view
+      where month_end = '{{end_date}}'
+      order by gmv desc;
+
+  - name: "cluster_mix"
+    title: "Customer Cluster Mix"
+    columns: ["cluster_name", "gmv", "order_cnt", "buyer_cnt"]
+    sql: |
+      -- Replace with your own monthly cluster query.
+      select cluster_name, gmv, order_cnt, buyer_cnt
+      from your_project.monthly_cluster_mix_view
+      where month_end = '{{end_date}}'
+      order by gmv desc;
 
 report:
-  title: "Weekly Business Review"
+  title: "{{brand_name}} {{month_label}}经营分析报告"
   subtitle: "{{start_date}} to {{end_date}}"
   output_dir: "output"
   output_filename: "{{report_name}}_{{end_date}}.pptx"
   theme:
-    primary_color: "0F4C81"
-    accent_color: "F28E2B"
+    primary_color: "FF6200"
+    accent_color: "FFA020"
+    soft_fill_color: "FFF4EB"
+    warm_fill_color: "FFDCC8"
     text_color: "1F1F1F"
+    muted_text_color: "666666"
+    line_color: "EAEAEA"
+    card_bg_color: "FAFAFA"
     background_color: "FFFFFF"
     font_family: "Aptos"
     font_family_mac: "Aptos"
@@ -60,59 +149,136 @@ report:
     cjk_font_family_other: "Noto Sans CJK SC"
     language: "zh-CN"
     title_font_size: 24
-    hero_title_font_size: 28
+    hero_title_font_size: 30
     subtitle_font_size: 18
     body_font_size: 16
     table_header_font_size: 11
     table_body_font_size: 10
     footer_font_size: 10
-    chart_palette: ["0F4C81", "F28E2B", "59A14F", "E15759"]
+    chart_palette: ["FF6200", "FF8A3D", "FFA020", "FFB85C", "FFDCC8"]
+    logo_path: "taobao_flash_sale_logo.png"
 
 slides:
   - type: "title"
-    title: "{{report_name}}"
+    template: "cover"
+    title: "{{brand_name}} {{month_label}}经营分析报告"
     subtitle: "{{start_date}} to {{end_date}}"
 
-  - type: "schema"
-    title: "Source Table Schema"
-    tables: ["fact_sales_daily", "fact_item_daily"]
+  - type: "table"
+    template: "overview"
+    title: "本月经营概览"
+    query: "overview_daily__monthly_summary"
+    support_query: "overview_daily__weekly"
+    max_rows: 1
+    takeaway_prompt: "Write exactly 2 bullets that summarize the overall month-level business condition."
 
   - type: "table"
-    title: "Overview Metrics"
-    query: "overview"
-    max_rows: 12
-    takeaway_prompt: "Write exactly 2 bullets that summarize the strongest signals from overview."
+    template: "kpi_summary"
+    title: "核心指标摘要"
+    query: "overview_daily__monthly_summary"
+    max_rows: 1
+    takeaway_prompt: "Write exactly 2 bullets that summarize the month-level KPI view for management."
 
   - type: "chart"
-    title: "GMV Trend"
-    query: "overview"
-    chart_type: "line"
-    category_column: "ds"
-    value_columns: ["gmv"]
-    max_points: 14
-    takeaway_prompt: "Write exactly 2 bullets that summarize the trend shown in the chart."
-
-  - type: "table"
-    title: "Top Items"
-    query: "top_items"
-    max_rows: 10
-    takeaway_prompt: "Write exactly 2 bullets that summarize product winners and laggards."
+    template: "weekly_trend"
+    title: "本月趋势"
+    query: "overview_daily__weekly"
+    chart_type: "column"
+    category_column: "week"
+    value_columns: ["gmv", "order_cnt"]
+    max_points: 5
+    takeaway_prompt: "Write exactly 2 bullets that summarize the weekly trend within the month."
 
   - type: "chart"
-    title: "Top Item GMV"
-    query: "top_items"
+    template: "comparison"
+    title: "本月对比"
+    query: "monthly_comparison"
     chart_type: "bar"
-    category_column: "item_name"
+    category_column: "period_label"
+    value_columns: ["gmv"]
+    max_points: 4
+    takeaway_prompt: "Write exactly 2 bullets that summarize the current month vs reference comparison."
+
+  - type: "chart"
+    template: "time_slot"
+    title: "时段分析"
+    query: "time_slot"
+    chart_type: "bar"
+    category_column: "time_slot"
+    value_columns: ["gmv"]
+    max_points: 8
+    takeaway_prompt: "Write exactly 2 bullets that summarize the monthly time-slot structure."
+
+  - type: "chart"
+    template: "price_band"
+    title: "价格带分析"
+    query: "price_band"
+    chart_type: "bar"
+    category_column: "price_band"
+    value_columns: ["gmv"]
+    max_points: 8
+    takeaway_prompt: "Write exactly 2 bullets that summarize the monthly price-band structure."
+
+  - type: "table"
+    template: "time_price_matrix"
+    title: "时段 × 价格带"
+    query: "time_price_matrix"
+    max_rows: 12
+    takeaway_prompt: "Write exactly 2 bullets that summarize the most important time-slot and price-band combinations."
+
+  - type: "chart"
+    template: "city_distribution"
+    title: "城市分布"
+    query: "city_distribution"
+    chart_type: "bar"
+    category_column: "city_name"
     value_columns: ["gmv"]
     max_points: 10
-    takeaway_prompt: "Write exactly 2 bullets that summarize what the ranking chart shows."
+    takeaway_prompt: "Write exactly 2 bullets that summarize the monthly city contribution structure."
+
+  - type: "chart"
+    template: "aoi_distribution"
+    title: "AOI 分布"
+    query: "aoi_distribution"
+    chart_type: "bar"
+    category_column: "aoi_name"
+    value_columns: ["gmv"]
+    max_points: 10
+    takeaway_prompt: "Write exactly 2 bullets that summarize the monthly AOI structure."
+
+  - type: "chart"
+    template: "new_old_mix"
+    title: "新老客结构"
+    query: "new_old_mix"
+    chart_type: "bar"
+    category_column: "customer_type"
+    value_columns: ["gmv", "buyer_cnt"]
+    max_points: 4
+    takeaway_prompt: "Write exactly 2 bullets that summarize the monthly new vs returning customer mix."
+
+  - type: "table"
+    template: "cluster_mix"
+    title: "Cluster 细分"
+    query: "cluster_mix"
+    max_rows: 10
+    takeaway_prompt: "Write exactly 2 bullets that summarize the customer cluster structure."
 
   - type: "ai_bullets"
-    title: "Executive Summary"
+    template: "conclusion"
+    title: "本月结论与下月建议"
+    subtitle: "先收口本月判断，再落下月建议。"
     prompt: |
-      Use the ODPS results to write exactly 3 bullets:
-      1. Main signal
-      2. Likely reason supported by the data
-      3. Next action
-    min_bullets: 3
-    max_bullets: 3
+      Use the month-level results to write exactly 4 bullets:
+      1. Overall monthly judgment
+      2. Trend signal
+      3. Structure signal
+      4. Next-month action
+    min_bullets: 4
+    max_bullets: 4
+
+  - type: "table"
+    template: "appendix"
+    title: "附录：口径与日级辅助数据"
+    query: "overview_daily"
+    max_rows: 12
+    takeaway_prompt: "Write exactly 2 bullets that explain appendix usage and daily-data role."

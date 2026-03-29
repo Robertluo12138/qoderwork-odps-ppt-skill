@@ -143,8 +143,8 @@ def main() -> None:
   <title>{escape(plan.get('report_title', 'Report Preview'))}</title>
   <style>
     :root {{
-      --primary: #{theme.get('primary_color', '0F4C81')};
-      --accent: #{theme.get('accent_color', 'F28E2B')};
+      --primary: #{theme.get('primary_color', 'FF6200')};
+      --accent: #{theme.get('accent_color', 'FFA020')};
       --text: #{theme.get('text_color', '1F1F1F')};
       --bg: #{theme.get('background_color', 'FFFFFF')};
       --font: {theme.get('font_family', 'Arial')}, sans-serif;
@@ -165,7 +165,7 @@ def main() -> None:
       background: var(--bg);
       border-radius: 20px;
       padding: 28px 28px 24px;
-      box-shadow: 0 16px 40px rgba(15, 76, 129, 0.12);
+      box-shadow: 0 16px 40px rgba(255, 98, 0, 0.10);
       overflow: hidden;
     }}
     .accent {{
@@ -191,7 +191,7 @@ def main() -> None:
       border-left: 8px solid var(--accent);
       padding-left: 20px;
       margin-top: 16px;
-      background: linear-gradient(135deg, rgba(15, 76, 129, 0.05), rgba(242, 142, 43, 0.08));
+      background: linear-gradient(135deg, rgba(255, 98, 0, 0.05), rgba(255, 160, 32, 0.08));
       border-radius: 16px;
     }}
     table {{

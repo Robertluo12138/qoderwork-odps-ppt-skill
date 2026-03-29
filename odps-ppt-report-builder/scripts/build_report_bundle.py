@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,174 @@ from common import (
     utc_timestamp,
     write_text,
 )
+
+
+def to_float(value: Any) -> float | None:
+    try:
+        text = str(value).replace(",", "").strip()
+        if not text:
+            return None
+        return float(text)
+    except ValueError:
+        return None
+
+
+def parse_iso_date(value: Any) -> date | None:
+    text = str(value).strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def detect_date_column(columns: list[str], rows: list[dict[str, Any]]) -> str:
+    for column in columns:
+        parsed = [parse_iso_date(row.get(column)) for row in rows if str(row.get(column, "")).strip()]
+        if parsed and len(parsed) == len([row for row in rows if str(row.get(column, "")).strip()]):
+            return column
+    return columns[0] if columns else ""
+
+
+def numeric_columns(columns: list[str], rows: list[dict[str, Any]], exclude: set[str] | None = None) -> list[str]:
+    excluded = exclude or set()
+    return [
+        column
+        for column in columns
+        if column not in excluded and any(to_float(row.get(column)) is not None for row in rows)
+    ]
+
+
+def format_metric_value(value: float) -> str:
+    if abs(value - round(value)) < 1e-9:
+        return f"{int(round(value))}"
+    return f"{value:.2f}"
+
+
+def derive_monthly_summary(query_name: str, item: dict[str, Any]) -> dict[str, Any] | None:
+    rows = item.get("rows", [])
+    columns = item.get("columns", [])
+    if not rows or not columns:
+        return None
+
+    date_column = detect_date_column(columns, rows)
+    metric_columns = numeric_columns(columns, rows, exclude={date_column})
+    if not metric_columns:
+        return None
+
+    parsed_dates = [parse_iso_date(row.get(date_column)) for row in rows if parse_iso_date(row.get(date_column))]
+    month_label = "本月累计"
+    if parsed_dates:
+        first_day = min(parsed_dates)
+        month_label = f"{first_day.year}-{first_day.month:02d}月累计"
+
+    summary_row: dict[str, str] = {"period": month_label}
+    totals = {
+        column: sum(to_float(row.get(column)) or 0.0 for row in rows)
+        for column in metric_columns
+    }
+    for column, total in totals.items():
+        summary_row[column] = format_metric_value(total)
+
+    gmv = totals.get("gmv")
+    order_cnt = totals.get("order_cnt")
+    buyer_cnt = totals.get("buyer_cnt")
+    if gmv is not None and buyer_cnt not in (None, 0):
+        summary_row["arpu"] = f"{gmv / buyer_cnt:.2f}"
+    if order_cnt is not None and buyer_cnt not in (None, 0):
+        summary_row["freq"] = f"{order_cnt / buyer_cnt:.2f}"
+    if gmv is not None and order_cnt not in (None, 0):
+        summary_row["aov"] = f"{gmv / order_cnt:.2f}"
+
+    summary_columns = ["period"] + metric_columns
+    for derived in ["arpu", "freq", "aov"]:
+        if derived in summary_row:
+            summary_columns.append(derived)
+
+    return {
+        "title": f"{item.get('title', query_name)} Monthly Summary",
+        "columns": summary_columns,
+        "sql": f"derived::{query_name}__monthly_summary",
+        "rows": [summary_row],
+    }
+
+
+def derive_weekly_trend(query_name: str, item: dict[str, Any]) -> dict[str, Any] | None:
+    rows = item.get("rows", [])
+    columns = item.get("columns", [])
+    if not rows or not columns:
+        return None
+
+    date_column = detect_date_column(columns, rows)
+    metric_columns = numeric_columns(columns, rows, exclude={date_column})
+    if not metric_columns:
+        return None
+
+    dated_rows = []
+    for row in rows:
+        parsed = parse_iso_date(row.get(date_column))
+        if parsed is None:
+            continue
+        dated_rows.append((parsed, row))
+    if not dated_rows:
+        return None
+
+    dated_rows.sort(key=lambda item: item[0])
+    month_start = date(dated_rows[0][0].year, dated_rows[0][0].month, 1)
+    buckets: dict[int, dict[str, Any]] = {}
+    for current_date, row in dated_rows:
+        week_index = ((current_date - month_start).days // 7) + 1
+        bucket = buckets.setdefault(
+            week_index,
+            {
+                "week": f"第{week_index}周",
+                "week_range": {"start": current_date, "end": current_date},
+                **{column: 0.0 for column in metric_columns},
+            },
+        )
+        bucket["week_range"]["start"] = min(bucket["week_range"]["start"], current_date)
+        bucket["week_range"]["end"] = max(bucket["week_range"]["end"], current_date)
+        for column in metric_columns:
+            bucket[column] += to_float(row.get(column)) or 0.0
+
+    derived_rows: list[dict[str, str]] = []
+    for index in sorted(buckets):
+        bucket = buckets[index]
+        range_start = bucket["week_range"]["start"]
+        range_end = bucket["week_range"]["end"]
+        result_row: dict[str, str] = {
+            "week": bucket["week"],
+            "week_range": f"{range_start.month:02d}/{range_start.day:02d}-{range_end.month:02d}/{range_end.day:02d}",
+        }
+        for column in metric_columns:
+            result_row[column] = format_metric_value(bucket[column])
+        derived_rows.append(result_row)
+
+    return {
+        "title": f"{item.get('title', query_name)} Weekly Trend",
+        "columns": ["week", *metric_columns, "week_range"],
+        "sql": f"derived::{query_name}__weekly",
+        "rows": derived_rows,
+    }
+
+
+def augment_monthly_queries(query_results: dict[str, Any]) -> dict[str, Any]:
+    augmented = dict(query_results)
+    for query_name, item in list(query_results.items()):
+        monthly_summary = derive_monthly_summary(query_name, item)
+        if monthly_summary:
+            augmented[f"{query_name}__monthly_summary"] = monthly_summary
+        weekly_trend = derive_weekly_trend(query_name, item)
+        if weekly_trend:
+            augmented[f"{query_name}__weekly"] = weekly_trend
+    return augmented
+
+
+def copy_optional_fields(slide: dict[str, Any], field_names: list[str]) -> dict[str, Any]:
+    return {name: slide[name] for name in field_names if name in slide}
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,6 +215,7 @@ def build_slide_plan(config: dict[str, Any], output_dir: Path) -> dict[str, Any]
                     "type": "title",
                     "title": slide.get("title", report.get("title", "")),
                     "subtitle": slide.get("subtitle", report.get("subtitle", "")),
+                    **copy_optional_fields(slide, ["template"]),
                 }
             )
             continue
@@ -58,6 +228,7 @@ def build_slide_plan(config: dict[str, Any], output_dir: Path) -> dict[str, Any]
                     "tables": slide.get("tables", []),
                     "intro_text": "",
                     "speaker_notes": "",
+                    **copy_optional_fields(slide, ["template"]),
                 }
             )
             continue
@@ -72,6 +243,10 @@ def build_slide_plan(config: dict[str, Any], output_dir: Path) -> dict[str, Any]
                     "takeaway_prompt": slide.get("takeaway_prompt", ""),
                     "takeaway_bullets": [],
                     "speaker_notes": "",
+                    **copy_optional_fields(
+                        slide,
+                        ["template", "time_grain", "section_label", "display_mode", "support_query"],
+                    ),
                 }
             )
             continue
@@ -89,6 +264,10 @@ def build_slide_plan(config: dict[str, Any], output_dir: Path) -> dict[str, Any]
                     "takeaway_prompt": slide.get("takeaway_prompt", ""),
                     "takeaway_bullets": [],
                     "speaker_notes": "",
+                    **copy_optional_fields(
+                        slide,
+                        ["template", "time_grain", "section_label", "display_mode"],
+                    ),
                 }
             )
             continue
@@ -104,6 +283,7 @@ def build_slide_plan(config: dict[str, Any], output_dir: Path) -> dict[str, Any]
                     "max_bullets": slide.get("max_bullets", 5),
                     "bullets": [],
                     "speaker_notes": "",
+                    **copy_optional_fields(slide, ["template", "section_label"]),
                 }
             )
             continue
@@ -228,6 +408,8 @@ def main() -> None:
             "sql": query["sql"],
             "rows": rows,
         }
+
+    query_results = augment_monthly_queries(query_results)
 
     payload_path = output_dir / "report_payload.json"
     plan_path = output_dir / "slide_plan.template.json"
