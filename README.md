@@ -5,11 +5,16 @@
 
 ## 一、安装
 
-### 第 1 步：下载 skill
+### 方式 A：拖拽安装（最简单，推荐）
 
-下载本仓库的 zip 包，解压得到 `odps-ppt-report-builder` 文件夹。
+1. 从本仓库下载 `odps-ppt-report-builder.zip`
+2. 打开 Qoder Work
+3. 把 zip 文件**直接拖进 Qoder Work 窗口**，或者在设置里选择"安装 Skill"然后选这个 zip 文件
+4. 安装完成，开始使用
 
-### 第 2 步：放到 Qoder Work 的 skill 目录
+### 方式 B：手动安装
+
+如果拖拽安装不生效，也可以手动操作：
 
 **macOS：**
 
